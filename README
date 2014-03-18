@@ -1,1 +1,26 @@
 Python CPROPS implementation.
+
+Functionality is grouped into families of utilities (though these are
+interlinked, not totally independent). Current functionality:
+
+NOISE ESTIMATION - in 1, 2, or 3d "noiseutils"
+
+MASKING - with joint SNR thresholding across channels and small region
+rejection.
+
+BLOB COLORING - region extraction and characterization at a pixel
+level.
+
+LOCAL MAX IDENTIFICATION - identification of peaks.
+
+The next few things:
+
+CUBE HANDLING - utilities to deal with cube input/output
+
+ASSIGNMENT - utilities to deal with colored cubes
+
+MERGER/TREE HANDLING -
+
+PROPERTY CALCULATION -
+
+
