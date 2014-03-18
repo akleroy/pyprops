@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import os
 import scipy.stats
@@ -83,16 +84,16 @@ def noise(data,
 
     # Use a robust estimator (sigma clipping + M.A.D.)
     if method == "ROBUST":
-        sig_thresh = akl_stats.sig_n_outliers(np.sum(valid), 
-                                              n_out=1.0, 
-                                              pos_only=True)        
-        return akl_stats.sigma_rob(data[valid], 
-                                   iterations=1, 
-                                   thresh=sig_thresh)
+        sig_thresh = sig_n_outliers(np.sum(valid), 
+                                    n_out=1.0, 
+                                    pos_only=True)        
+        return sigma_rob(data[valid], 
+                         iterations=1, 
+                         thresh=sig_thresh)
 
     # Use the M.A.D. only.
     if method == "MAD":
-        return akl_stats.mad(data[valid])
+        return mad(data[valid])
 
     # Default to the standard deviation
     return numpy.std(data[not_noise == False])
@@ -128,14 +129,14 @@ def noise_map(data, signal=None, blank=None, method="ROBUST"):
 
         # work out expected sigma threshold for one outlier
         n_spec = data.shape[2]
-        sig_thresh = akl_stats.sig_n_outliers(n_spec, 
-                                              n_out=1.0, 
-                                              pos_only=True)        
+        sig_thresh = sig_n_outliers(n_spec, 
+                                    n_out=1.0, 
+                                    pos_only=True)        
         for i in np.arange(data.shape[0]):
             for j in np.arange(data.shape[1]):        
-                noise_map[i,j] = akl_stats.sigma_rob((data[i,j])[valid[i,j]], 
-                                                     iterations=1, 
-                                                     thresh=sig_thresh)
+                noise_map[i,j] = sigma_rob((data[i,j])[valid[i,j]], 
+                                           iterations=1, 
+                                           thresh=sig_thresh)
         return noise_map
 
     # Use the median absolute deviation
@@ -143,7 +144,7 @@ def noise_map(data, signal=None, blank=None, method="ROBUST"):
         for i in np.arange(data.shape[0]):
             for j in np.arange(data.shape[1]):
                 noise_map[i,j] = \
-                    akl_stats.mad((data[i,j])[valid[i,j]])   
+                    mad((data[i,j])[valid[i,j]])   
         return noise_map
 
     # Default to standard deviation
@@ -183,21 +184,21 @@ def noise_spec(data, signal=None, blank=None, method="ROBUST"):
     if method=="ROBUST":
         # work out expected sigma threshold for one outlier
         n_spec = data.shape[0]*data.shape[1]
-        sig_thresh = akl_stats.sig_n_outliers(n_spec, 
-                                              n_out=1.0, 
-                                              pos_only=True)
-
+        sig_thresh = sig_n_outliers(n_spec, 
+                                    n_out=1.0, 
+                                    pos_only=True)
+        
         for i in range(data.shape[2]):
-            noise_spec[i] = akl_stats.sigma_rob((data[:,:,i])[valid[:,:,i]], 
-                                                iterations=1, 
-                                                thresh=sig_thresh)
+            noise_spec[i] = sigma_rob((data[:,:,i])[valid[:,:,i]], 
+                                      iterations=1, 
+                                      thresh=sig_thresh)
         return noise_spec
 
     # Estimate via median absolute deviation
     if method=="MAD":
         for i in range(data.shape[2]):
             noise_spec[i] = \
-                akl_stats.mad((data[:,:,i])[valid[:,:,i]])
+                mad((data[:,:,i])[valid[:,:,i]])
         return noise_spec
 
     # Default to standard deviation
@@ -236,7 +237,42 @@ def noise_cube(data, signal=None, blank=None, method="ROBUST",
     return noise_cube
 
 # ------------------------------------------------------------
-# 
+# STASTICS HELPER PROCEDURES
+# ------------------------------------------------------------
+
+def mad(data, sigma=True):
+    """
+    Return the median absolute deviation.
+    """
+    med = np.median(data)
+    mad = np.median(np.abs(data - med))
+    if sigma==False:
+        return mad
+    else:
+        return mad*1.4826
+
+def sigma_rob(data, iterations=1, thresh=3.0):
+    """
+    Iterative m.a.d. based sigma with positive outlier rejection.
+    """
+    noise = mad(data)
+    for i in range(iterations):
+        ind = (data <= thresh*noise).nonzero()
+        noise = mad(data[ind])
+    return noise
+
+def sig_n_outliers(n_data, n_out=1.0, pos_only=True):
+    """
+    Return the sigma needed to expect n (default 1) outliers given
+    n_data points.
+    """
+    perc = float(n_out)/float(n_data)
+    if pos_only == False:
+        perc *= 2.0
+    return abs(scipy.stats.norm.ppf(perc))
+
+# ------------------------------------------------------------
+# TBD
 # ------------------------------------------------------------
 
 # Commentary: in theory the masked array class inside of numpy should
