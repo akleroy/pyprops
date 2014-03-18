@@ -1,4 +1,0 @@
-pyprops
-=======
-
-CPROPS python implementation
