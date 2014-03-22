@@ -89,6 +89,10 @@ def make_cprops_mask(
     # Pare small regions
     # ------------------------------------------------------------
 
+    # Note that this step could be accomplished to some degree by
+    # using a (binary) opening operator. It's not perfect, it will
+    # clip your edges but it might be much faster and better defined.
+
     if min_area != None or min_vol != None or min_vchan != None:
         reject_regions(mask,
                        min_area=min_area,
@@ -193,6 +197,60 @@ def make_spec_mask(
 # ------------------------------------------------------------
 # MASK MANIPULATION
 # ------------------------------------------------------------
+
+def grow_mask(mask_in,
+              iters=-1,
+              xy_only=False,
+              z_only=False,
+              corners=False,
+              spec_axis=0,
+              constraint=None,
+              timer=False,
+              verbose=False
+              ):
+    """
+    Manipulate an existing mask. Mostly wraps binary dilation operator
+    in scipy with easy flags to create structuring elements.
+    """
+    if timer:
+        start=time.time()
+        full_start=time.time()
+
+    # Construct the dilation structure (calls "connectivity" in the
+    # blobutils).
+   
+    skip_axes = []
+
+    if xy_only == True:
+        skip_axes.append(spec_axis)
+
+    if z_only == True:
+        axes = range(mask_in.ndim)
+        for axis in axes:
+            if axis != spec_axis:
+                skip_axes.appen(axis)
+
+    structure = connectivity(ndim=mask_in.ndim,
+                             skip_axes=skip_axes,
+                             corners=corners) 
+
+    print structure
+
+    # Apply the dilation
+
+    mask = binary_dilation(mask_in, 
+                           structure=structure,
+                           iterations=iters,
+                           mask=constraint,
+                           )
+
+    # Return
+    
+    if timer:
+        full_stop=time.time()
+        print "Mask expansion took ", full_stop-full_start
+
+    return mask
 
 def reject_regions(mask,
                    assign=None,

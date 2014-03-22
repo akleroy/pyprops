@@ -56,7 +56,9 @@ def blob_color(mask,
 # DEFINE CONNECTIVITY
 # ------------------------------------------------------------
 
-def connectivity(ndim=3, skip_axes=None, corners=False):
+def connectivity(ndim=3, 
+                 skip_axes=None, 
+                 corners=False):
     """
     Return simple connectivity either with or without corners for n
     dimensions (default 3). Can suppress connectivity along one or
@@ -81,15 +83,18 @@ def connectivity(ndim=3, skip_axes=None, corners=False):
 # ------------------------------------------------------------
 
 # These focus on remapping blobs to vectors or dictionaries for easy
-# manipulation.
+# manipulation. Definitely an area that could be either sped up or
+# merged into moment calculation.
 
 def blob_to_vec(
     data,
     mask=None
     ):
     """
-    Return coordinates and data value given a mask.
+    Return coordinates and data value given a mask. Needs a rewrite
+    using find_object fast slicer.
     """
+
     # ... a default mask
     if mask == None:
         mask = np.isfinite(data)
