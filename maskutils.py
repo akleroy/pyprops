@@ -252,6 +252,12 @@ def grow_mask(mask_in,
 
     return mask
 
+def mask2d_to_3d():
+    pass
+
+def mask3d_to_2d():
+    pass
+
 def reject_regions(mask,
                    assign=None,
                    min_area=None,
@@ -261,7 +267,9 @@ def reject_regions(mask,
                    inplace=True,
                    timer=False):
     """
-    Reject small regions from a mask.
+    Reject small regions from a mask. Some of this functionality could
+    be replicated at increased speed by using binary erosion (with a
+    kernel customized according to the axes).
     """
 
     if timer:
@@ -279,7 +287,7 @@ def reject_regions(mask,
         start=time.time()
 
     # Derive statistics for the regions
-    stats = stat_all_blobs(assign, save_coords=True)    
+    shapes = get_all_blob_shapes(assign, save_coords=True)
 
     if timer:
         stop=time.time()
@@ -291,15 +299,15 @@ def reject_regions(mask,
         new_mask = mask
 
     # Loop over all regions
-    for this_blob in stats.keys():  
+    for this_color in shapes.keys():  
 
-        blob_stat = stats[this_blob]
+        blob_shape = shapes[this_color]
 
         reject = False
 
         # Reject on volume
         if min_vol != None and reject == False:
-            if blob_stat["volume"] < min_vol:
+            if blob_shape["volume"] < min_vol:
                 reject = True
         
         # Reject on velocity extent
@@ -307,13 +315,13 @@ def reject_regions(mask,
 
             # ... switch on spectral axis
             if spec_axis == 0:
-                if blob_stat["deltax"] < min_vchan:
+                if blob_shape["deltax"] < min_vchan:
                     reject = True                
             elif spec_axis == 1:
-                if blob_stat["deltay"] < min_vchan:
+                if blob_shape["deltay"] < min_vchan:
                     reject = True                
             elif spec_axis == 2:
-                if blob_stat["deltaz"] < min_vchan:
+                if blob_shape["deltaz"] < min_vchan:
                     reject = True
 
         # Reject on areal extent
@@ -321,13 +329,13 @@ def reject_regions(mask,
 
             # ... switch on spectral axis
             if spec_axis == 2:
-                if blob_stat["areaxy"] < min_area:
+                if blob_shape["areaxy"] < min_area:
                     reject = True                    
             elif spec_axis == 0:
-                if blob_stat["areayz"] < min_area:
+                if blob_shape["areayz"] < min_area:
                     reject = True                
             elif spec_axis == 1:
-                if blob_stat["areaxz"] < min_area:
+                if blob_shape["areaxz"] < min_area:
                     reject = True
                     
         # Pare a rejected region from the mask
@@ -335,18 +343,18 @@ def reject_regions(mask,
             if inplace == True:
 #                mask *= (assign!=this_blob)
                 if ndim == 1:
-                    mask[blob_stat["x"]] = False
+                    mask[blob_shape["x"]] = False
                 if ndim == 2:
-                    mask[blob_stat["x"],blob_stat["y"]] = False
+                    mask[blob_shape["x"],blob_shape["y"]] = False
                 if ndim == 3:
-                    mask[blob_stat["x"],blob_stat["y"],blob_stat["z"]] = False
+                    mask[blob_shape["x"],blob_shape["y"],blob_shape["z"]] = False
             else:
                 if ndim == 1:
-                    new_mask[blob_stat["x"]] = False
+                    new_mask[blob_shape["x"]] = False
                 if ndim == 2:
-                    new_mask[blob_stat["x"],blob_stat["y"]] = False
+                    new_mask[blob_shape["x"],blob_shape["y"]] = False
                 if ndim == 3:
-                    new_mask[blob_stat["x"],blob_stat["y"],blob_stat["z"]] = False
+                    new_mask[blob_shape["x"],blob_shape["y"],blob_shape["z"]] = False
 #                new_mask *= (assign!=this_blob)
 #                new_mask[assign==this_blob] = False
 

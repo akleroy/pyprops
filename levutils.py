@@ -2,6 +2,7 @@ import numpy as np
 from scipy.ndimage import label
 from scipy.ndimage import histogram
 from blobutils import connectivity
+from blobutils import get_all_blob_shapes
 import time
 
 # Utilities to deal with contour levels in an image.
@@ -172,7 +173,7 @@ def merge_given_levels(
 
             for seed in shared_seeds:
 
-                # this step (weirdly) takes a lot of time - adds almost an order of magnitude
+                # this step (weirdly) can take a lot of time
 
                 merger_matrix[seed, shared_seeds] = level
                 merger_matrix[shared_seeds, seed] = level

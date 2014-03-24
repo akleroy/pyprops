@@ -260,4 +260,8 @@ def all_local_max_roll(
         print "Generating local max candidates took ", stop-start
 
     return lmax_coords
-        
+
+# ------------------------------------------------------------
+# REJECT LOCAL MAXIMA ON A VARIETY OF CONDITIONS
+# ------------------------------------------------------------
+

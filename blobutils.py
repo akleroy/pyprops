@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.ndimage import label
+from momutils import *
 
 # ------------------------------------------------------------
 # WRAPPER TO THE BLOB COLORER
@@ -82,13 +83,17 @@ def connectivity(ndim=3,
 # BLOB EXTRACTION
 # ------------------------------------------------------------
 
+# Needs work.
+
 # These focus on remapping blobs to vectors or dictionaries for easy
 # manipulation. Definitely an area that could be either sped up or
-# merged into moment calculation.
+# merged into moment calculation. Overlap with find_objects but not
+# totally clear that those make it so much faster.
 
 def blob_to_vec(
     data,
-    mask=None
+    mask=None,
+    origin=None
     ):
     """
     Return coordinates and data value given a mask. Needs a rewrite
@@ -105,18 +110,27 @@ def blob_to_vec(
     # ... one-d case
     if ndim == 1:
         x = (mask).nonzero()
+        if origin != None:
+            x += origin
         val = data[x]
         return x, val
 
     # ... two-d case
     if ndim == 2:
         x, y = (mask).nonzero()
+        if origin != None:
+            x += origin[0]
+            y += origin[1]
         val = data[x,y]
         return x, y, val
 
     # ... three-d case
     if ndim == 3:
         x, y, z = (mask).nonzero()
+        if origin != None:
+            x += origin[0]
+            y += origin[1]
+            z += origin[2]
         val = data[x,y,z]
         return x, y, z, val
     
@@ -192,69 +206,7 @@ def vec_to_image(
 # BLOB CHARACTERIZATION
 # ------------------------------------------------------------
 
-def stat_blob(
-    x, 
-    y = None, 
-    z = None
-    ):
-    """
-    """
-
-    # Initialize the output
-    blob_stats = {}
-
-    # -=-=-=-=-=
-    # 1-D extent
-    # -=-=-=-=-=
-
-    # ... X
-    blob_stats["minx"] = np.min(x)
-    blob_stats["maxx"] = np.max(x)
-    blob_stats["deltax"] = blob_stats["maxx"]-blob_stats["minx"]+1
-
-    # ... Y
-    if y != None:
-        blob_stats["miny"] = np.min(y)
-        blob_stats["maxy"] = np.max(y)
-        blob_stats["deltay"] = blob_stats["maxy"]-blob_stats["miny"]+1
-
-    # ... Z
-    if z != None:
-        blob_stats["minz"] = np.min(z)
-        blob_stats["maxz"] = np.max(z)
-        blob_stats["deltaz"] = blob_stats["maxz"]-blob_stats["minz"]+1
-
-    # -=-=-=-=-=
-    # 2-D extent
-    # -=-=-=-=-=    
-
-    # Create a number that maps to a unique 2-d position out of pairs
-    # of coordinates and then note the area by counting the unique
-    # set of such numbers.
-
-    # ... XY
-    if y != None:
-        blob_stats["areaxy"] = len(np.unique(y*(blob_stats["maxx"]+1) + x))
-
-    if z != None:
-        # ... XZ
-        blob_stats["areaxz"] = len(np.unique(z*(blob_stats["maxx"]+1) + x))
-
-        # ... YZ
-        blob_stats["areayz"] = len(np.unique(z*(blob_stats["maxy"]+1) + y))
-
-    # -=-=-=-=-=
-    # 3-D extent
-    # -=-=-=-=-=
-
-    # Equate the volume to the set of pixels
-    
-    blob_stats["volume"] = len(x)
-
-    # Return the dictionary
-    return blob_stats
-
-def stat_all_blobs(
+def get_all_blob_shapes(
     color_image,
     save_coords=False):
     """
@@ -278,7 +230,7 @@ def stat_all_blobs(
     unique_colors = np.unique(color)
         
     # initialize output
-    all_stats = {}
+    all_shapes = {}
 
     # loop over colors
     for this_color in unique_colors:
@@ -286,32 +238,33 @@ def stat_all_blobs(
         ind = (color == this_color).nonzero()
         
         if ndim==1:
-            this_stats = stat_blob(x[ind])
+            this_shape = mask_shape(x[ind])
 
         if ndim==2:
-            this_stats = stat_blob(x[ind], y[ind])
+            this_shape = mask_shape(x[ind], y[ind])
 
         if ndim==3:
-            this_stats = stat_blob(x[ind], y[ind], z[ind])
+            this_shape = mask_shape(x[ind], y[ind], z[ind])
 
         # note the color in the dictionary
-        this_stats["color"] = this_color
+        this_shape["color"] = this_color
 
         # if requested save the coordinates in the data
-        if ndim == 1:
-            this_stats["x"] = x
-
-        if ndim == 2:
-            this_stats["x"] = x
-            this_stats["y"] = y
-
-        if ndim == 3:
-            this_stats["x"] = x
-            this_stats["y"] = y
-            this_stats["z"] = z
+        if save_coords:
+            if ndim == 1:
+                this_shape["x"] = x
+                
+            if ndim == 2:
+                this_shape["x"] = x
+                this_shape["y"] = y
+                    
+            if ndim == 3:
+                this_shape["x"] = x
+                this_shape["y"] = y
+                this_shape["z"] = z
 
         # place the dictionary in the parent structure
-        all_stats[this_color] = this_stats
+        all_shapes[this_color] = this_shape
 
     # return
-    return all_stats
+    return all_shapes
