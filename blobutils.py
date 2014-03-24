@@ -2,33 +2,31 @@ import numpy as np
 from scipy.ndimage import label
 from momutils import *
 
-# ------------------------------------------------------------
-# WRAPPER TO THE BLOB COLORER
-# ------------------------------------------------------------
-
-# The guts of the blob-handling process. Wraps scipy's ndimage
-# function "label." Extra utility can be added by playing with the
-# connectivity but the default usage is to map simply connected
-# regions.
+# Routines to make "blob coloring" (labeling discrete regions in a
+# binary image) easier. Wraps scipy's ndimage class heavily.
 
 def blob_color(mask,
                corners=False,
                connect=None):
     """
-    Basic blob-coloring wrapper.
+    Basic blob-coloring wrapper. Feed it a binary mask and it will
+    return a colored array. Also accepts a custom connectivity
+    structure. If this is not used, it generates a default
+    connectivity of +/- one step in each dimension direction. The flag
+    corners tells it whether to also connect along diagonals.
     """
 
     # ------------------------------------------------------------
     # Error Checking on Inputs
     # ------------------------------------------------------------
-
+    
     # ... existence
     try:
         mask
     except NameError:
         print "Requires data."
         return
-
+    
     # ... numpy array
     if (type(mask) != type(np.arange(0))):
         print "Requires a numpy array."
@@ -53,10 +51,6 @@ def blob_color(mask,
 
     return color
 
-# ------------------------------------------------------------
-# DEFINE CONNECTIVITY
-# ------------------------------------------------------------
-
 def connectivity(ndim=3, 
                  skip_axes=None, 
                  corners=False):
@@ -65,9 +59,29 @@ def connectivity(ndim=3,
     dimensions (default 3). Can suppress connectivity along one or
     more axes.
     """
+
+    # ------------------------------------------------------------
+    # Error Checking on Inputs
+    # ------------------------------------------------------------
+
+    if (type(ndim) != type(0)):
+        print "Requires an integer number of axes."
+        return
+    
+    # ... boolean data type
+    if (type(corners) != type(True)):
+        print "Requires boolean data type for corners flag."
+        return
+    
+    # ------------------------------------------------------------
+    # Generate the connectivity
+    # ------------------------------------------------------------
+
     if corners == True:
+        # ... connect along diagonals
         connect = np.ones(np.ones(ndim)*3)
     else:
+        # ... suppress diagonals
         connect = np.zeros(np.ones(ndim)*3)
         center = np.ones(ndim,dtype=np.dtype('int'))
         connect[tuple(center)] = 1
@@ -77,6 +91,22 @@ def connectivity(ndim=3,
             connect[tuple(pixel)] = 1
             pixel[axis] = 2
             connect[tuple(pixel)] = 1
+
+    # ------------------------------------------------------------
+    # Suppress connect along specified axes
+    # ------------------------------------------------------------
+
+    if skip_axes != None:
+    
+        # ... catch the case of an integer
+        if (type(skip_axes) == type(1)):
+            skip_axes = [skip_axes]
+
+        ind = np.indices(connect.shape)
+        for axis in skip_axes:
+            blank = (ind[axis] == 0) + (ind[axis] == 2)
+            connect[blank] = 0                        
+
     return connect
 
 # ------------------------------------------------------------
