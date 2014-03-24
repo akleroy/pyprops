@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.ndimage import label
-from momutils import *
+# from momutils import *
 
 # Routines to make "blob coloring" (labeling discrete regions in a
 # binary image) easier. Wraps scipy's ndimage class heavily.
