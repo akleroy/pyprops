@@ -1,59 +1,101 @@
 import numpy as np
+import math
 from scipy.ndimage import label
-# from momutils import *
 
-# Routines to make "blob coloring" (labeling discrete regions in a
-# binary image) easier. Wraps scipy's ndimage class heavily.
+# Utilities for working with shapes in a data cube.
 
-def blob_color(mask,
-               corners=False,
-               connect=None):
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# DEFINE STRUCTURING ELEMENTS
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+def ellipse_connectivity(
+    major=None,
+    minor=None,
+    posang=None,
+    ):
     """
-    Basic blob-coloring wrapper. Feed it a binary mask and it will
-    return a colored array. Also accepts a custom connectivity
-    structure. If this is not used, it generates a default
-    connectivity of +/- one step in each dimension direction. The flag
-    corners tells it whether to also connect along diagonals.
+    ...
     """
 
     # ------------------------------------------------------------
     # Error Checking on Inputs
     # ------------------------------------------------------------
-    
-    # ... existence
-    try:
-        mask
-    except NameError:
-        print "Requires data."
-        return
-    
-    # ... numpy array
-    if (type(mask) != type(np.arange(0))):
-        print "Requires a numpy array."
+
+    if major==None:
+        print "Requires a major axis."
         return
 
-    # ... boolean data type
-    if (mask.dtype != np.dtype('bool')):
-        print "Requires boolean data type."
+    if minor > major:
+        print "Minor axis must be <= major axis."
         return
-    
+
+    if minor==None:
+        minor = minor
+
+    if posang==None:
+        posang=0.0
+
     # ------------------------------------------------------------
-    # Define connectivitiy
+    # Build the ellipse
     # ------------------------------------------------------------
-    #
-    # Can be supplied by the user, else calculate it here
+    
+    npix = 2*np.ceil(major/2.0)+1
+    y,x = np.indices((npix, npix))
+    y -= np.mean(y)*1.
+    x -= np.mean(x)*1.
+    dtor = math.pi/180.
+    xp = x*np.cos(posang*dtor) - y*np.sin(posang*dtor)
+    yp = x*np.sin(posang*dtor) + y*np.cos(posang*dtor)
+    
+    return (((xp/(major/2.0))**2 + (yp/(minor/2.0))**2) <= 1.0)
 
-    if connect == None:
-        connect = connectivity(mask.ndim, corners=corners)
 
-    # Wrap the SciPy implementation
-    color, ncolors = label(mask,structure=connect)
+def rectangle_connectivity(
+    major=None,
+    minor=None,
+    posang=None,
+    ):
+    """
+    ...
+    """
 
-    return color
+    # ------------------------------------------------------------
+    # Error Checking on Inputs
+    # ------------------------------------------------------------
 
-def connectivity(ndim=3, 
-                 skip_axes=None, 
-                 corners=False):
+    if major==None:
+        print "Requires a major axis."
+        return
+
+    if minor > major:
+        print "Minor axis must be <= major axis."
+        return
+
+    if minor==None:
+        minor = minor
+
+    if posang==None:
+        posang=0.0
+
+    # ------------------------------------------------------------
+    # Build the rectangle
+    # ------------------------------------------------------------
+    
+    npix = 2*np.ceil(major/2.0)+1
+    y,x = np.indices((npix, npix))
+    y -= np.mean(y)*1.
+    x -= np.mean(x)*1.
+    dtor = math.pi/180.
+    xp = x*np.cos(posang*dtor) - y*np.sin(posang*dtor)
+    yp = x*np.sin(posang*dtor) + y*np.cos(posang*dtor)
+    
+    return ((np.abs(xp) <= (major/2.0))*(np.abs(yp) <= (minor/2.0)))
+
+
+def simple_connectivity(
+    ndim=3,
+    skip_axes=None, 
+    corners=False):
     """
     Return simple connectivity either with or without corners for n
     dimensions (default 3). Can suppress connectivity along one or
@@ -108,6 +150,60 @@ def connectivity(ndim=3,
             connect[blank] = 0                        
 
     return connect
+
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# LABEL CONTIGUOUS REGIONS
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+#
+# ... where "contiguous" is defined by the structuring elements.
+#
+
+def blob_color(mask,
+               corners=False,
+               connect=None):
+    """
+    Basic blob-coloring wrapper. Feed it a binary mask and it will
+    return a colored array. Also accepts a custom connectivity
+    structure. If this is not used, it generates a default
+    connectivity of +/- one step in each dimension direction. The flag
+    corners tells it whether to also connect along diagonals.
+    """
+
+    # ------------------------------------------------------------
+    # Error Checking on Inputs
+    # ------------------------------------------------------------
+    
+    # ... existence
+    try:
+        mask
+    except NameError:
+        print "Requires data."
+        return
+    
+    # ... numpy array
+    if (type(mask) != type(np.arange(0))):
+        print "Requires a numpy array."
+        return
+
+    # ... boolean data type
+    if (mask.dtype != np.dtype('bool')):
+        print "Requires boolean data type."
+        return
+    
+    # ------------------------------------------------------------
+    # Define connectivitiy
+    # ------------------------------------------------------------
+    #
+    # Can be supplied by the user, else calculate it here
+
+    if connect == None:
+        connect = connectivity(mask.ndim, corners=corners)
+
+    # Wrap the SciPy implementation
+    color, ncolors = label(mask,structure=connect)
+
+    return color
 
 # ------------------------------------------------------------
 # BLOB EXTRACTION

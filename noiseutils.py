@@ -64,29 +64,19 @@ def snr_cube(data,
 # EXTRACT A SINGLE NOISE VALUE
 # ------------------------------------------------------------
 
-def noise(data, 
-          signal=None, 
-          blank=None, 
-          method="ROBUST"):
+def noise(
+    data,
+    method="ROBUST"):
     """
-    Calculate a single noise estimate for a data set.
-    """
-    
-    # Initialize a default blanking mask
-    if blank==None:
-        blank = (np.isfinite(data) == False)
-        
-    # Identify valid data to estimate the noise
-    if signal==None:
-        valid = (blank == False)
-    else:
-        valid = ((blank == False) * (signal == False))
+    Calculate a single noise estimate for a vector.
+    """        
 
     # Use a robust estimator (sigma clipping + M.A.D.)
     if method == "ROBUST":
-        sig_thresh = sig_n_outliers(np.sum(valid), 
-                                    n_out=1.0, 
-                                    pos_only=True)        
+        sig_thresh = \
+            sig_n_outliers(len(data), 
+                           n_out=1.0, 
+                           pos_only=True)        
         return sigma_rob(data[valid], 
                          iterations=1, 
                          thresh=sig_thresh)
