@@ -2,9 +2,9 @@ import numpy as np
 from scipy.ndimage import histogram
 from scipy.ndimage import binary_dilation
 from scipy.ndimage import binary_erosion
-from scipy.ndimage import label
-from morphutils import *
+from scipy.ndimage import label, find_objects
 from cube import *
+from struct import *
 import matplotlib.pyplot as plt
 import time
 import copy
@@ -160,31 +160,43 @@ class Mask:
         # Label the mask
         # .............................................................
         
-        structure = simple_connectivity(
-            ndim=self.mask.ndim,
-            corners=corners) 
+        structure = (Struct(
+                "simple", 
+                ndim=self.mask.ndim,                
+                corners=corners)).struct
 
-        labels, nlabels = blob_color(
-            self.mask,
-            corners=False,
-            connect=None)
+        labels, nlabels = label(self.mask,
+                                structure=structure)
 
         # .............................................................
         # Histogram the labels
         # .............................................................
 
         hist = histogram(
-            labels, 1, nlabels, nlabels)
+            labels, 0.5, nlabels+0.5, nlabels)
         
         # .............................................................
         # Identify the low-volume regions
         # .............................................................
         
-        # PICK BACK UP HERE
+        if np.sum(hist < thresh) == 0:
+            return
+        
+        loc = find_objects(labels)
+
+        for reg in np.arange(1,nlabels):
+            if hist[reg-1] > thresh:
+                continue
+            self.mask[loc[reg-1]] *= (labels[loc[reg-1]] != reg)
+
+#        for reg in below_thresh:
+#            self.mask[(labels == reg)] = False
+
             
     def erode_small_regions(
         self,        
-        spec_axis=None,
+        major=3,
+        depth=2,
         timer=False,
         backup=False
         ):
@@ -212,15 +224,19 @@ class Mask:
         # Construction of structuring element
         # .............................................................        
 
-            
-            
+        structure = Struct(
+            "rectangle", 
+            major=major, 
+            zaxis=self.spec_axis, 
+            depth=depth)
+        
         # .............................................................
         # Erosion
         # .............................................................
 
         self.mask = binary_erosion(
             self.mask, 
-            structure=structure,
+            structure=structure.struct,
             iterations=1
             )
 
@@ -230,7 +246,7 @@ class Mask:
 
         self.mask = binary_erosion(
             self.mask, 
-            structure=structure,
+            structure=structure.struct,
             iterations=1
             )
 
@@ -304,18 +320,20 @@ class Mask:
 
         # ... build the sturcturing element
 
-        structure = simple_connectivity(
-            ndim=self.mask.ndim,
-            skip_axes=skip_axes,
-            corners=corners) 
+        structure = Struct(
+            "simple", 
+            ndim=self.mask.ndim,                
+            corners=corners)
+        for skip in skip_axes:
+            structure.suppress_axis(skip)
 
         # .............................................................
         # Apply the binary dilation with the constructed parameters
         # .............................................................
 
-        mask = binary_dilation(
+        self.mask = binary_dilation(
             self.mask, 
-            structure=structure,
+            structure=structure.struct,
             iterations=iters,
             mask=constraint,
             )
@@ -494,7 +512,8 @@ class Mask:
         # Build the mask
         # .............................................................
 
-        inner_mask = copy.copy(self)
+        inner_mask = Mask(self.data)
+        outer_mask = Mask(self.data)
         inner_mask.joint_threshold(            
             usesnr=usesnr,
             scale=scale,
@@ -503,8 +522,12 @@ class Mask:
             append=append,
             timer=timer
             )
-        
-        outer_mask = copy.copy(self)
+
+        inner_mask.erode_small_regions(
+            major=3,
+            depth=2,
+            timer=timer)
+            
         outer_mask.joint_threshold(            
             usesnr=usesnr,
             scale=scale,
