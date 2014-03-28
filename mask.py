@@ -12,6 +12,7 @@ from scipy.ndimage import label, find_objects
 import matplotlib.pyplot as plt
 
 from struct import *
+from cube import *
 
 # .............................
 # Try to import astropy modules
@@ -147,10 +148,10 @@ class Mask:
         if template == None:
             try:
                 template = self.filename
-            except NameError:
+            except AttributeError:
                 try:
                     template = self.data.filename
-                except NameError:
+                except AttributeError:
                     print "Need a valid template."
                     return
         
