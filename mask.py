@@ -56,6 +56,7 @@ class Mask:
     mask = None
     backup = None
     spec_axis = None
+    deg_axis = None
     
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Initialize and infrastructure
@@ -140,30 +141,25 @@ class Mask:
         overwrite=False,        
         template=None):
         """
-        Read a mask from a FITS file.
+        ...
         """
-        
-        if casa_ok == False:
-            print "Cannot write CASA files without CASA."
-            return
-
-        infile=self.data.filename,
 
         if template == None:
             try:
-                template = self.data.filename
+                template = self.filename
             except NameError:
-                print "Need a valid template."
-                return
-
-        myimage = ia.newimagefromimage(
-            infile=template,
-            outfile=outfile,
-            overwrite=overwrite)
+                try:
+                    template = self.data.filename
+                except NameError:
+                    print "Need a valid template."
+                    return
         
-        myimage.putchunk(self.mask*1)
-        
-        myimage.close()
+        to_casa_image(
+            data = self.mask*1.,
+            template = template,
+            outfile = outfile,
+            overwrite = overwrite
+            )
 
     def from_fits_file(self,
                        infile=None,

@@ -166,26 +166,19 @@ class Cube:
 
         # ... figure out the spectral axis
         self.spec_axis = \
-            self.find_spec_axis_casa()
+            get_casa_axis(self.cs, "Spectral")        
 
     def to_casa_image(self,
                       outfile=None,
                       overwrite=False
                       ):
         
-        if casa_ok == False:
-            print "Cannot write CASA files without CASA."
-            return
-
-        myimage = ia.newimagefromimage(
-            infile=self.filename,
-            outfile=outfile,
-            overwrite=overwrite)
-        
-        myimage.putchunk(self.data)
-        
-        myimage.close()
-
+        to_casa_image(
+            data = self.data,
+            template = self.filename,
+            outfile = outfile,
+            overwrite = overwrite
+            )
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Handle units
@@ -333,3 +326,66 @@ class Cube:
         if val != None:
             self.signal = val
 
+# &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+# EXTERNAL HELPER FUNCTIONS
+# &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+
+def get_casa_axis(
+    coordsys,    
+    desired_type="Spectral",
+    skipdeg=True,
+    ):
+    """
+    Get the position the first axis of a given type. Returns None if
+    there is not an axis of this type.
+    """
+    if casa_ok == False:
+        print "Needs CASA."
+        return
+
+    axis_types = coordsys.axiscoordinatetypes()
+    count = 0
+    for axis in axis_types: 
+        if skipdeg:
+            if axis == "Stokes":
+                continue
+        if axis == desired_type:
+            return count
+        count += 1
+    return None
+
+def to_casa_image(
+    data=None,
+    outfile=None,
+    template=None,
+    overwrite=False):
+    """
+    ...
+    """
+    
+    if casa_ok == False:
+        print "Cannot write CASA files without CASA."
+        return
+    
+    if template == None:
+        print "Need a valid template."
+        return
+
+    if data == None:
+        print "Need data."
+        return
+        
+    myimage = ia.newimagefromimage(
+        infile=template,
+        outfile=outfile,
+        overwrite=overwrite)
+
+    mycs = myimage.coordsys()
+    stokes = get_casa_axis(mycs,"Stokes",skipdeg=False)
+    if stokes == None:
+        myimage.putchunk(data)
+    else:
+        myimage.putchunk(
+            np.expand_dims(data, stokes))
+        
+    myimage.close()

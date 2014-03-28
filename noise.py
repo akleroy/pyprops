@@ -1,5 +1,7 @@
-from astropy.io import fits
-from astropy.wcs import wcs
+# &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+# Imports
+# &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.stats
