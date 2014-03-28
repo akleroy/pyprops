@@ -1,13 +1,47 @@
+# &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+# IMPORTS
+# &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+
+import time
+import copy
 import numpy as np
 from scipy.ndimage import histogram
 from scipy.ndimage import binary_dilation
 from scipy.ndimage import binary_erosion
 from scipy.ndimage import label, find_objects
-from cube import *
-from struct import *
 import matplotlib.pyplot as plt
-import time
-import copy
+
+from struct import *
+
+# .............................
+# Try to import astropy modules
+# .............................
+
+try:
+    from astropy.io import fits
+except ImportError:
+    astropy_ok = False
+    print "WARNING! astropy import failed. astropy mode is disabled."
+else:
+    astropy_ok = True
+    
+# .............................
+# Try to import CASA modules
+# .............................
+
+try:
+    from tasks import *
+    from taskinit import *
+    import casac
+except ImportError:
+    casa_ok = False
+    print "WARNING! CASA import failed. CASA mode is disabled."
+else:
+    casa_ok = True
+
+# &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+# MASK OBJECT
+# &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
 
 class Mask:
     """
@@ -29,13 +63,20 @@ class Mask:
 
     def __init__(
         self,
-        data
+        data=None,
+        spec_axis=None
         ):
         """
         Construct a new mask object.
         """
         self.data = data
-        self.spec_axis = data.spec_axis
+        if data != None:
+            try:
+                self.spec_axis = data.spec_axis
+            except NameError:
+                self.spec_axis = spec_axis
+        else:
+            self.spec_axis = spec_axis
 
     def set_data(
         self,
@@ -65,12 +106,75 @@ class Mask:
         if self.backup != None:
             self.mask = self.backup
 
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    # Read/write
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    def from_casa_image(
+        self,
+        infile=None,
+        append=False):
+        """
+        Read a mask from a FITS file.
+        """
+
+        if casa_ok == False:
+            print "Cannot read CASA images without CASA."
+            return
+
+        ia.open(infile)
+        # ... read the data and cast as boolean
+        if append:
+            self.mask *= (ia.getchunk(dropdeg=True) > 0.5)
+        else:
+            self.mask = (ia.getchunk(dropdeg=True) > 0.5)
+ 
+        self.cs = ia.coordsys()
+        ia.close()
+
+        return
+
+    def to_casa_image(
+        self,
+        outfile=None,
+        overwrite=False,        
+        template=None):
+        """
+        Read a mask from a FITS file.
+        """
+        
+        if casa_ok == False:
+            print "Cannot write CASA files without CASA."
+            return
+
+        infile=self.data.filename,
+
+        if template == None:
+            try:
+                template = self.data.filename
+            except NameError:
+                print "Need a valid template."
+                return
+
+        myimage = ia.newimagefromimage(
+            infile=template,
+            outfile=outfile,
+            overwrite=overwrite)
+        
+        myimage.putchunk(self.mask*1)
+        
+        myimage.close()
+
     def from_fits_file(self,
                        infile=None,
                        append=False):
         """
         Read a mask from a FITS file.
         """
+
+        if astropy_ok == False:
+            print "Cannot read FITS files without astropy."
+            return
 
         # ... open the file
         hdulist = fits.open(infile)
@@ -81,19 +185,34 @@ class Mask:
         else:
             self.mask = hdulist[0].data > 0.5
 
+        # ... save the header
+        self.hdr = hdulist[0].header
+
         return
 
     def to_fits_file(self,
-                        outfile=None,
-                        overwrite=False):
+                     outfile=None,
+                     overwrite=False):
         """
         Write the cube to a FITS file.
         """
+
+
+        if astropy_ok == False:
+            print "Cannot write FITS files without astropy."
+            return
+
         if self.data.filemode != "astropy":
             print "Can only/read write FITS in astropy mode."
             return
-        hdr_copy = self.data.hdr.copy()
+
+        try:
+            hdr_copy = self.hdr.copy()
+        except NameError:
+            hdr_copy = self.data.hdr.copy()
+
         hdr_copy["BUNIT"] = "Mask"
+
         fits.writeto(
             outfile, 
             self.mask.astype(np.int16), 

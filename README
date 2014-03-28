@@ -6,9 +6,32 @@ Implementation of the signal-identification, object extraction, and
 emission characterization package "cprops" in python.
 
 --------------------
-I. OVERALL STRUCTURE
+OVERALL STRUCTURE
 --------------------
 
+cube - defines a class to read and manipulate cubes.
+
+mask - defines a class to create, manipulate, and read/write masks.
+
+noise - defines a class to derive noise estimates
+
+struct - helper class to build morphological structuring elements
+
 --------------------
-II. CONTENTS
+NEXT UP
 --------------------
+
+Up noise dimensionality, add visual feedback.
+
+Error trap on CASA/astropy on load.
+
+Implement CASA side.
+
+Start testing on weird orders and degenerate axes.
+
+Local maximum object.
+
+Read on masks.
+
+Read/write on noise.
+

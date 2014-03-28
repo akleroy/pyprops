@@ -1,12 +1,54 @@
-from astropy.io import fits
-from astropy.wcs import wcs
+# &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+# IMPORTS
+# &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+
+# .............................
+# Try to import astropy modules
+# .............................
+
+try:
+    from astropy.io import fits
+    from astropy.wcs import wcs
+except ImportError:
+    astropy_ok = False
+    print "WARNING! astropy import failed. astropy mode is disabled."
+else:
+    astropy_ok = True
+    
+
+# .............................
+# Try to import CASA modules
+# .............................
+
+try:
+    from tasks import *
+    from taskinit import *
+    import casac
+except ImportError:
+    casa_ok = False
+    print "WARNING! CASA import failed. CASA mode is disabled."
+else:
+    casa_ok = True
+
+# ...............................
+# Imports that should always work
+# ...............................
+
 import numpy as np
 import mask
 import noise
 
+# &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+# CUBE CLASS
+# &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+
 class Cube:
     """ 
-    ...
+    
+    Class to hold data and supporting information for a data cube
+    (images and spectra should also work). Initialize it with a
+    filename or a data set.
+    
     """
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -27,6 +69,9 @@ class Cube:
     wcs = None
     hdr = None
 
+    # ... casa-specific
+    cs = None
+
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Initialize and load data
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -42,7 +87,7 @@ class Cube:
                 self.from_fits_file(data_in)
             else:
                 # ... treat it as a CASA image?
-                pass
+                self.from_casa_image(data_in)
         elif type(data_in) == type(np.array([1,1])):
             # ... we got an array
             self.data = data_in
@@ -51,6 +96,13 @@ class Cube:
     def from_fits_file(self,
                        filename=None
                        ):
+        """
+        Read in a cube from a FITS file using astropy.
+        """
+
+        if astropy_ok == False:
+            print "Cannot read FITS files without astropy."
+            return
 
         # ... record the filename
         self.filename=filename
@@ -74,11 +126,16 @@ class Cube:
             self.find_spec_axis_fits()
 
     def to_fits_file(self,
-                        outfile=None,
-                        overwrite=False):
+                     outfile=None,
+                     overwrite=False):
         """
         Write the cube to a FITS file.
         """
+
+        if astropy_ok == False:
+            print "Cannot write FITS files without astropy."
+            return
+
         if self.filemode != "astropy":
             print "Can only/read write FITS in astropy mode."
             return
@@ -88,6 +145,47 @@ class Cube:
             print "Will not overwrite with overwite=False."
             return        
         fits.writeto(outfile, self.data, self.hdr, clobber=overwrite)
+
+    def from_casa_image(self,
+                        infile=None
+                        ):
+        
+        if casa_ok == False:
+            print "Cannot read CASA files without CASA."
+            return
+
+        # ... record the filename
+        self.filename=infile
+        self.filemode="casa"
+
+        ia.open(infile)
+        self.data = ia.getchunk(dropdeg=True)
+        self.valid = ia.getchunk(getmask=True, dropdeg=True)
+        self.cs = ia.coordsys()
+        ia.close()
+
+        # ... figure out the spectral axis
+        self.spec_axis = \
+            self.find_spec_axis_casa()
+
+    def to_casa_image(self,
+                      outfile=None,
+                      overwrite=False
+                      ):
+        
+        if casa_ok == False:
+            print "Cannot write CASA files without CASA."
+            return
+
+        myimage = ia.newimagefromimage(
+            infile=self.filename,
+            outfile=outfile,
+            overwrite=overwrite)
+        
+        myimage.putchunk(self.data)
+        
+        myimage.close()
+
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Handle units
@@ -126,7 +224,34 @@ class Cube:
                 if axis['coordinate_type'] == "spectral":
                     return self.data.ndim - count - 1
                 count += 1
-            return None
+        return
+
+    def find_spec_axis_casa(
+        self
+        ):
+        if self.filemode == "casa":
+            axis_types = self.cs.axiscoordinatetypes()
+            count = 0
+            for axis in axis_types: 
+                # ... ignore (degenerate) stokes axis
+                if axis == "Stokes":
+                    continue
+                if axis == "Spectral":
+                    return count
+                count += 1
+        return
+
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    # Manipulate the cube
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    def set_invalid_to(
+        self,
+        val=np.nan):
+        """
+        Set all invalid data to a specified number (default nan).
+        """
+        self.data[self.valid == False] = val
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Expose data
