@@ -9,29 +9,68 @@ emission characterization package "cprops" in python.
 OVERALL STRUCTURE
 --------------------
 
-cube - defines a class to read and manipulate cubes.
+cube - a generic CASA/FITS interface to pull in a data cube
 
-mask - defines a class to create, manipulate, and read/write masks.
+data - read and manipulate data cubes. Inherits cube.
+
+mask - create, manipulate, and read/write masks. Inherits cube.
 
 noise - defines a class to derive noise estimates
 
 struct - helper class to build morphological structuring elements
 
 --------------------
-NEXT UP
+NEXT STEPS
 --------------------
 
-Up noise dimensionality, add visual feedback.
+- Coordinate handling in "cube" - important for workshop in order to 
 
-Error trap on CASA/astropy on load.
+- Beam handling in "cube"
 
-Implement CASA side.
+- Unit handling in "data"
+  * Jy <-> K main hurdle
 
-Start testing on weird orders and degenerate axes.
+- Local maximum object
+  * local max identification
+  * merge calculation
 
-Local maximum object.
+- Automatic masking parameters from negative (accept a thresholding
+  definition and suggest a value that yields no negatives.
 
-Read on masks.
+- Assignment object
 
-Read/write on noise.
+- "Moment" object
+
+- Up noise dimensionality
+
+- Noise read/write
+
+- Revisit "struct" and make it cleaner/clearer
+
+- "Suggested subcubes" in mask
+
+- Primary beam correction into "cube" (and noise?)
+
+- Rework noise so that it inherits cube? Noise needs to decide if it
+  is something that lives on its own or is always recomputed on the
+  fly. I like the former.
+
+- a general is_kosher() function that runs a suite of sanity checks
+  and reports back. Cleaning up some of this stuff is out of scope but
+  we can at least shout on units, untyped axes, axis order, etc.
+
+--------------------
+OTHER DIRECTIONS
+--------------------
+
+- all kinds of error checking
+
+- moment creation / linkage to CASA / error propagation
+
+- radial profile construction
+
+- two-d header / spectrum header extraction - useful for writing a
+  minimum sized noise object.
+
+- spectral stacking implementation
 
