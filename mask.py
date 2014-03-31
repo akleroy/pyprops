@@ -14,32 +14,6 @@ import matplotlib.pyplot as plt
 from struct import *
 from cube import *
 
-# .............................
-# Try to import astropy modules
-# .............................
-
-try:
-    from astropy.io import fits
-except ImportError:
-    astropy_ok = False
-    print "WARNING! astropy import failed. astropy mode is disabled."
-else:
-    astropy_ok = True
-    
-# .............................
-# Try to import CASA modules
-# .............................
-
-try:
-    from tasks import *
-    from taskinit import *
-    import casac
-except ImportError:
-    casa_ok = False
-    print "WARNING! CASA import failed. CASA mode is disabled."
-else:
-    casa_ok = True
-
 # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
 # MASK OBJECT
 # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
@@ -117,21 +91,25 @@ class Mask:
         infile=None,
         append=False):
         """
-        Read a mask from a FITS file.
+        Read a mask from a CASA image file. Any value above 0.5 will
+        be treated as True in the resulting mask.
         """
-
-        if casa_ok == False:
-            print "Cannot read CASA images without CASA."
-            return
-
-        ia.open(infile)
+        
+        # ... use the method inside the cube module. Keep only the
+        # first thing returned
+        new_mask, new_valid, new_cs = \
+            (from_casa_image(
+                infile=infile,
+                transpose=False,
+                dropdeg=True)
+             
         # ... read the data and cast as boolean
         if append:
-            self.mask *= (ia.getchunk(dropdeg=True) > 0.5)
+            self.mask *= (new_mask > 0.5)
         else:
-            self.mask = (ia.getchunk(dropdeg=True) > 0.5)
+            self.mask = (new_mask > 0.5)
  
-        self.cs = ia.coordsys()
+        self.cs = new_cs
         ia.close()
 
         return
@@ -142,7 +120,7 @@ class Mask:
         overwrite=False,        
         template=None):
         """
-        ...
+        Write a mask to a CASA image file.
         """
 
         if template == None:
@@ -152,7 +130,7 @@ class Mask:
                 try:
                     template = self.data.filename
                 except AttributeError:
-                    print "Need a valid template."
+                    print "Need a template in order to write."
                     return
         
         to_casa_image(
