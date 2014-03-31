@@ -34,27 +34,26 @@ class Data(cube.Cube):
     # ... the unit
     unit = None
     
-
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    # Read/write data
+    # Initialization
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     def __init__(self,
-                 data_in=None,
-                 spec_axis=None,
+                 *args,
+                 **kwargs
                  ):
-        if type(data_in) == type("file.fits"):
-            # ... we got a file name
-            if (data_in[-4:]).upper() == "FITS":
-                # ... it's a fits file
-                self.from_fits_file(data_in)
-            else:
-                # ... treat it as a CASA image?
-                self.from_casa_image(data_in)
-        elif type(data_in) == type(np.array([1,1])):
-            # ... we got an array
-            self.data = data_in
-            self.spec_axis = spec_axis
+        cube.Cube.__init__(self, *args, **kwargs)
+
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    # Read/write/copy Overwrites
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    
+    def init_from_cube(
+        self,
+        prev):
+        cube.Cube.copy_from_cube(self, prev)
+        self.signal = copy.deepcopy(prev.signal)
+        self.unit = copy.deepcopy(prev.unit)
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Handle units

@@ -20,7 +20,6 @@ class Noise:
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Contents
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
     
     data = None
     signal = None
@@ -108,9 +107,9 @@ class Noise:
         # Identify which values to fit
         use = self.data.valid
         if self.signal != None:
-            use *= (self.signal.mask == False)
+            use *= (self.signal.data == False)
         elif self.data.signal != None:
-            use *= (self.data.signal.mask == False)
+            use *= (self.data.signal.data == False)
         
         # Call the external noise fitter
         self.scale = est_noise_1d(

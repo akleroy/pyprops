@@ -9,6 +9,7 @@
 # ...............................
 
 import numpy as np
+import copy
 
 # .............................
 # Try to import astropy modules
@@ -85,23 +86,63 @@ class Cube:
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Initialization
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
     
-
     def __init__(self,
+                 data = None,                 
+                 spec_axis = None,                 
+                 pyorder = True,
+                 hdr = None,
+                 wcs = None,
+                 casa_cs = None,
                  ):
-        if type(data_in) == type("file.fits"):
-            # ... we got a file name
-            if (data_in[-4:]).upper() == "FITS":
-                # ... it's a fits file
-                self.from_fits_file(data_in)
+
+        # If we have another cube object, then copy it
+        if isinstance(data, Cube):
+            self.init_from_cube(data)
+
+        # If we have a string then read a file
+        if type(data) == type("file.fits"):
+
+            if (data[-4:]).upper() == "FITS":
+                # ... if it ends in FITS call astropy
+                self.from_fits_file(data)
             else:
-                # ... treat it as a CASA image?
-                self.from_casa_image(data_in)
-        elif type(data_in) == type(np.array([1,1])):
-            # ... we got an array
-            self.data = data_in
-            self.spec_axis = spec_axis
+                # ... else call CASA
+                self.from_casa_image(
+                    data,
+                    transpose=pyorder)
+
+        # If we have an array, save it
+        if type(data) == type(np.array([1,1])):
+            self.data = data
+
+        # Allow the user to force/supply attributes but note that
+        # these may already be set by the file reader. If so, respect
+        # that.
+
+        if spec_axis != None and self.spec_axis == None:
+            self.spec_axis = spec_axis    
+
+        if hdr != None and self.hdr == None:
+            self.hdr == hdr
+
+        if wcs != None and self.astropy_wcs == None:
+            self.astropy_wcs == wcs
+
+        if casa_cs != None and self.casa_cs == None:
+            self.casa_cs == wcs
+        
+        if self.pyorder == None:
+            self.pyorder = pyorder
+
+        # Some filling-out logic
+            
+        if self.astropy_wcs == None and self.hdr != None:
+            if astropy_ok:
+                self.astropy_wcs = wcs.WCS(self.hdr)
+
+        if self.spec_axis == None:
+            self.find_spec_axis()
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # FITS input/output
@@ -137,15 +178,15 @@ class Cube:
         if skipvalid == False:
             self.valid = np.isfinite(self.data)
 
+        # ... astropy always reads in pyorder
+        self.pyorder = True
+
         # ... note the header and WCS information
         if skiphdr == False:
             self.astropy_wcs = wcs.WCS(hdulist[0].header)
             self.hdr = hdulist[0].header
             # ... figure out the spectral axis
             self.find_spec_axis()
-
-        # ... astropy always reads in pyorder
-        self.pyorder = True
 
     def to_fits_file(self,
                      outfile=None,
@@ -220,7 +261,7 @@ class Cube:
 
         """
         Load a cube into memory from a CASA image. By default it will
-        tranpose the cube into a 'python' order and drop degenerate
+        transpose the cube into a 'python' order and drop degenerate
         axes. These options can be suppressed. The object holds the
         coordsys object from the image in memory.
         """
@@ -249,7 +290,7 @@ class Cube:
         # ... transpose if desired
         if transpose:
             self.data = np.transpose(self.data)
-            self.valid = np.tranpose(self.valid)
+            self.valid = np.transpose(self.valid)
             self.pyorder = True
         else:
             self.pyorder = False
@@ -279,7 +320,8 @@ class Cube:
             print "Cannot write CASA files without CASA loaded."
             return
     
-        # ... set the template        
+        # ... set the template                
+        havetemplate = False
         if template != None:
             havetemplate = True
 
@@ -287,7 +329,7 @@ class Cube:
             template = self.filename
             havetemplate = True
 
-        if havetempalte == False:
+        if havetemplate == False:
             print "Need a valid template."
             return
         
@@ -313,7 +355,7 @@ class Cube:
         image_cs = myimage.coordsys()
 
         # ... identify any stokes axis
-        stokes = get_casa_axis(mycs,"Stokes",skipdeg=False)
+        stokes = get_casa_axis(image_cs,"Stokes",skipdeg=False)
 
         # ... branch on:
         # (1) whether we are in "python" order
@@ -322,9 +364,9 @@ class Cube:
         if stokes == None:
             if self.pyorder == True:
                 if data == None:
-                    myimage.putchunk(np.tranpose(self.data))
+                    myimage.putchunk(np.transpose(self.data))
                 else:
-                    myimage.putchunk(np.tranpose(data))
+                    myimage.putchunk(np.transpose(data))
             else:
                 if data == None:
                     myimage.putchunk(self.data)
@@ -334,10 +376,10 @@ class Cube:
             if self.pyorder == True:
                 if data == None:
                     myimage.putchunk(
-                        np.expand_dims(np.tranpose(self.data), stokes))
+                        np.expand_dims(np.transpose(self.data), stokes))
                 else:
                     myimage.putchunk(
-                        np.expand_dims(np.tranpose(data), stokes))
+                        np.expand_dims(np.transpose(data), stokes))
             else:
                 if data == None:
                     myimage.putchunk(
@@ -348,6 +390,36 @@ class Cube:
 
         # ... close the CASA ia tool.
         myimage.close()
+
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    # Copy from another cube
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    # Could use deepcopy() but I don't totally get how to do this and
+    # make it jive with the subclasses. We want to be able, e.g., to
+    # initialize a mask off of a data object. This is blunt and
+    # inelegant but works.
+
+    def init_from_cube(
+        self, 
+        prev):
+        """
+        Initialize a new cube from another cube. Copy the data.
+        """
+        self.data = copy.deepcopy(prev.data)
+        self.valid = copy.deepcopy(prev.valid)
+        self.pyorder = copy.deepcopy(prev.pyorder)
+        self.spec_axis = copy.deepcopy(prev.spec_axis)
+        self.filename = copy.deepcopy(prev.filename)
+        self.hdr = copy.deepcopy(prev.hdr)
+        self.astropy_wcs = copy.deepcopy(prev.astropy_wcs)
+
+        # CASA objects don't play well with deepcopy, use their own
+        # copy method:
+        if casa_ok:            
+            self.casa_cs = prev.casa_cs.copy()
+        else:
+            self.casa_cs = None
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Handle coordinates
@@ -380,29 +452,32 @@ class Cube:
 
         # Figure out which kind of data we have.
         if mode == None:
-            if self.wcs != None:
-                mode=="FITS"
+            if self.astropy_wcs != None:
+                mode="FITS"
             elif self.casa_cs != None:
-                mode=="CASA"
+                mode="CASA"
             else:
+                print "Cannot determine file mode."
                 return
 
         if mode.upper() == "FITS":
-            axis_types = self.wcs.get_axis_types()
+            axis_types = self.astropy_wcs.get_axis_types()
             count = 0
             for axis in axis_types:            
                 if axis['coordinate_type'] == "spectral":
-                    if pyorder == True:
+                    if self.pyorder == True:
                         self.spec_axis = self.data.ndim - count - 1
+                        return
                     else:
                         self.spec_axis = count
+                        return
                 count += 1
             self.spec_axis = None
             return
 
         if mode.upper() == "CASA":
             # ... figure out the spectral axis
-            spec_in_casa = get_casa_axis(self.cs, "Spectral")
+            spec_in_casa = get_casa_axis(self.casa_cs, "Spectral")
 
             if spec_in_casa == None:
                 self.spec_axis = None

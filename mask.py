@@ -1,3 +1,6 @@
+# Mask class, intended to hold masks (as opposed to data or
+# assignment). Extends the cube class.
+
 # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
 # IMPORTS
 # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
@@ -5,74 +8,83 @@
 import time
 import copy
 import numpy as np
+
 from scipy.ndimage import histogram
 from scipy.ndimage import binary_dilation
 from scipy.ndimage import binary_erosion
 from scipy.ndimage import label, find_objects
+
 import matplotlib.pyplot as plt
 
+from pyprops import cube, noise
 from struct import *
-from cube import *
 
 # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
 # MASK OBJECT
 # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
 
-class Mask:
+class Mask(cube.Cube):
     """
     ...
     """
 
-    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    # Contents
-    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    # Attributes (in addition to those in Cube)
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    data = None
-    mask = None
     backup = None
-    spec_axis = None
-    deg_axis = None
+    linked_data = None
     
-    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-    # Initialize and infrastructure
-    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    # Initialize
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     def __init__(
         self,
-        data=None,
-        spec_axis=None
+        *args,
+        **kwargs
         ):
         """
         Construct a new mask object.
         """
-        self.data = data
-        if data != None:
-            try:
-                self.spec_axis = data.spec_axis
-            except NameError:
-                self.spec_axis = spec_axis
-        else:
-            self.spec_axis = spec_axis
+        thresh = kwargs.pop("thresh", 0.5)
+        cube.Cube.__init__(self, *args, **kwargs)        
+        self.data = (self.data > thresh)
+        self.data[self.valid == False] = False
+        self.valid = None
 
-    def set_data(
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    # Copy from another cube
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    # Modify the lower level call to link to the data
+
+    def init_from_cube(
+        self, 
+        prev):
+        """
+        Initialize a new cube from another cube. Copy the data.
+        """
+        cube.Cube.init_from_cube(self, prev)
+        self.linked_data = prev
+
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    # Links to data cube
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    def set_linked_data(
         self,
         val=None
         ):
         """
-        Link the mask object to a data object.
+        Link the mask object to a data cube object.
         """
         if val != None:
-            self.data = val
+            self.linked_data = val
 
-    def set_spectral_axis(
-        self,
-        val=None
-        ):
-        """
-        Set the spectral axis.
-        """
-        if val != None:
-            self.spec_axis = val
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    # Backup/undo
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
     def step_back(
         self):
@@ -80,7 +92,14 @@ class Mask:
         Restore the backup mask, setting it to be the new mask.
         """
         if self.backup != None:
-            self.mask = self.backup
+            self.data = self.backup
+
+    def save_backup(
+        self):
+        """
+        Restore the backup mask, setting it to be the new mask.
+        """
+        self.backup = self.data
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Read/write
@@ -88,112 +107,89 @@ class Mask:
 
     def from_casa_image(
         self,
-        infile=None,
-        append=False):
+        *args,
+        **kwargs
+        ):
         """
-        Read a mask from a CASA image file. Any value above 0.5 will
-        be treated as True in the resulting mask.
+        Read a mask from a CASA image.
         """
         
-        # ... use the method inside the cube module. Keep only the
-        # first thing returned
-        new_mask, new_valid, new_cs = \
-            (from_casa_image(
-                infile=infile,
-                transpose=False,
-                dropdeg=True)
-             
-        # ... read the data and cast as boolean
-        if append:
-            self.mask *= (new_mask > 0.5)
-        else:
-            self.mask = (new_mask > 0.5)
- 
-        self.cs = new_cs
-        ia.close()
+        # Pull out two keyowrds ...
+        append = kwargs.pop("append", None)
+        thresh = kwargs.pop("thresh", 0.5)
 
-        return
+        if append == True:
+            self.backup = self.data
+        
+        cube.Cube.from_casa_image(
+            self,
+            *args,
+            **kwargs)
+
+        self.data = (self.data > thresh)
+        self.valid = None
+        if append:
+            self.data = self.data*self.backup        
 
     def to_casa_image(
         self,
-        outfile=None,
-        overwrite=False,        
-        template=None):
+        *args,
+        **kwargs):
         """
         Write a mask to a CASA image file.
         """
 
-        if template == None:
-            try:
-                template = self.filename
-            except AttributeError:
-                try:
-                    template = self.data.filename
-                except AttributeError:
-                    print "Need a template in order to write."
-                    return
-        
-        to_casa_image(
-            data = self.mask*1.,
-            template = template,
-            outfile = outfile,
-            overwrite = overwrite
-            )
+        # Recast as float
+        if kwargs.has_key("data") == False:
+            kwargs["data"] = self.data*1.0
 
-    def from_fits_file(self,
-                       infile=None,
-                       append=False):
+        cube.Cube.to_casa_image(
+            self,
+            *args,
+            **kwargs)
+
+    def from_fits_file(
+        self,
+        *args,
+        **kwargs):
         """
         Read a mask from a FITS file.
         """
 
-        if astropy_ok == False:
-            print "Cannot read FITS files without astropy."
-            return
+        # Pull out two keyowrds ...
+        append = kwargs.pop("append", None)
+        thresh = kwargs.pop("thresh", 0.5)
 
-        # ... open the file
-        hdulist = fits.open(infile)
+        if append == True:
+            self.backup = self.data
+        
+        cube.Cube.from_fits_file(
+            self,
+            *args,
+            **kwargs)
 
-        # ... read the data and cast as boolean
+        self.data = (self.data > thresh)
+        self.valid = None
         if append:
-            self.mask *= (hdulist[0].data > 0.5)
-        else:
-            self.mask = hdulist[0].data > 0.5
+            self.data = self.data*self.backup
 
-        # ... save the header
-        self.hdr = hdulist[0].header
-
-        return
-
-    def to_fits_file(self,
-                     outfile=None,
-                     overwrite=False):
+    def to_fits_file(
+        self, 
+        *args, 
+        **kwargs):
         """
         Write the cube to a FITS file.
         """
 
+        # Recast as float
+        if kwargs.has_key("data") == False:
+            kwargs["data"] = self.data*1.0
 
-        if astropy_ok == False:
-            print "Cannot write FITS files without astropy."
-            return
-
-        if self.data.filemode != "astropy":
-            print "Can only/read write FITS in astropy mode."
-            return
-
-        try:
-            hdr_copy = self.hdr.copy()
-        except NameError:
-            hdr_copy = self.data.hdr.copy()
-
-        hdr_copy["BUNIT"] = "Mask"
-
-        fits.writeto(
-            outfile, 
-            self.mask.astype(np.int16), 
-            hdr_copy, 
-            clobber=overwrite)
-     
+        cube.Cube.to_fits_file(
+            self,
+            *args,
+            **kwargs)
+        
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Expose the mask
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -202,21 +198,22 @@ class Mask:
         self,
         axis=None):
         """
+        Return a two-dimensional version of the mask.
         """
         if axis==None:
             if self.spec_axis==None:
-                if self.data.spec_axis!=None:
-                    axis=self.data.spec_axis
+                if self.linked_data.spec_axis!=None:
+                    axis=self.linked_data.spec_axis
             else:
                 axis=self.spec_axis
 
-        if self.mask.ndim == 2:
-            return self.mask
+        if self.data.ndim == 2:
+            return self.data
 
         if axis == None:
             return None
         
-        return (np.sum(self.mask, axis=axis) >= 1)
+        return (np.sum(self.data, axis=axis) >= 1)
         
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -248,7 +245,7 @@ class Mask:
         # .............................................................
 
         if backup==True:
-            self.backup=self.mask
+            self.backup=self.data
 
         # .............................................................
         # Label the mask
@@ -256,10 +253,10 @@ class Mask:
         
         structure = (Struct(
                 "simple", 
-                ndim=self.mask.ndim,                
+                ndim=self.data.ndim,                
                 corners=corners)).struct
 
-        labels, nlabels = label(self.mask,
+        labels, nlabels = label(self.data,
                                 structure=structure)
 
         # .............................................................
@@ -281,11 +278,7 @@ class Mask:
         for reg in np.arange(1,nlabels):
             if hist[reg-1] > thresh:
                 continue
-            self.mask[loc[reg-1]] *= (labels[loc[reg-1]] != reg)
-
-#        for reg in below_thresh:
-#            self.mask[(labels == reg)] = False
-
+            self.data[loc[reg-1]] *= (labels[loc[reg-1]] != reg)
             
     def erode_small_regions(
         self,        
@@ -304,7 +297,7 @@ class Mask:
         # .............................................................
 
         if backup==True:
-            self.backup=self.mask
+            self.backup=self.data
 
         # .............................................................
         # Time the operation if requested.
@@ -328,8 +321,8 @@ class Mask:
         # Erosion
         # .............................................................
 
-        self.mask = binary_erosion(
-            self.mask, 
+        self.data = binary_erosion(
+            self.data, 
             structure=structure.struct,
             iterations=1
             )
@@ -338,8 +331,8 @@ class Mask:
         # Dilation
         # .............................................................
 
-        self.mask = binary_erosion(
-            self.mask, 
+        self.data = binary_erosion(
+            self.data, 
             structure=structure.struct,
             iterations=1
             )
@@ -379,7 +372,7 @@ class Mask:
         # .............................................................
 
         if backup==True:
-            self.backup=self.mask
+            self.backup=self.data
 
         # .............................................................
         # Time the operation if requested.
@@ -407,7 +400,7 @@ class Mask:
         # in the connectivity definition.
 
         if z_only == True:
-            axes = range(self.mask.ndim)
+            axes = range(self.data.ndim)
             for axis in axes:
                 if axis != self.spec_axis:
                     skip_axes.append(axis)
@@ -416,7 +409,7 @@ class Mask:
 
         structure = Struct(
             "simple", 
-            ndim=self.mask.ndim,                
+            ndim=self.data.ndim,                
             corners=corners)
         for skip in skip_axes:
             structure.suppress_axis(skip)
@@ -425,8 +418,8 @@ class Mask:
         # Apply the binary dilation with the constructed parameters
         # .............................................................
 
-        self.mask = binary_dilation(
-            self.mask, 
+        self.data = binary_dilation(
+            self.data, 
             structure=structure.struct,
             iterations=iters,
             mask=constraint,
@@ -446,7 +439,7 @@ class Mask:
     # Generate a new mask
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    def joint_threshold(
+    def threshold(
         self,
         usesnr=True,
         scale=1.0,
@@ -490,7 +483,7 @@ class Mask:
         # .............................................................
 
         if backup==True:
-            self.backup=self.mask
+            self.backup=self.data
 
         # .............................................................
         # Time the operation if requested.
@@ -517,9 +510,9 @@ class Mask:
         # .............................................................
 
         if usesnr:
-            working_data = self.data.snr()
+            working_data = self.linked_data.snr()
         else:
-            working_data = self.data.data
+            working_data = self.linked_data.data
 
         # .............................................................
         # Build the mask
@@ -529,7 +522,7 @@ class Mask:
         new_mask = np.int_(working_data >= thresh*scale)
 
         # If we have a spectral axis apply the joint conditions
-        if self.spec_axis != None and self.data.data.ndim > 2:
+        if self.spec_axis != None and self.linked_data.data.ndim > 2:
 
             # roll the cube "out_of" times along the spectral axis and keep a
             # running tally of the number of points above the threshold by
@@ -554,9 +547,9 @@ class Mask:
         # .............................................................
 
         if append:
-            self.mask *= new_mask
+            self.data *= new_mask
         else:
-            self.mask = new_mask
+            self.data = new_mask
 
         # .............................................................
         # Finish timing
@@ -592,7 +585,7 @@ class Mask:
         # .............................................................
 
         if backup==True:
-            self.backup=self.mask
+            self.backup=self.data
 
         # .............................................................
         # Time the operation if requested.
@@ -606,9 +599,9 @@ class Mask:
         # Build the mask
         # .............................................................
 
-        inner_mask = Mask(self.data)
-        outer_mask = Mask(self.data)
-        inner_mask.joint_threshold(            
+        inner_mask = Mask(self.linked_data)
+        outer_mask = Mask(self.linked_data)
+        inner_mask.threshold(            
             usesnr=usesnr,
             scale=scale,
             thresh=hithresh,
@@ -622,7 +615,7 @@ class Mask:
             depth=2,
             timer=timer)
             
-        outer_mask.joint_threshold(            
+        outer_mask.threshold(            
             usesnr=usesnr,
             scale=scale,
             thresh=lothresh,
@@ -633,7 +626,7 @@ class Mask:
 
         inner_mask.grow(
             corners=corners,
-            constraint=outer_mask.mask,
+            constraint=outer_mask.data,
             timer=timer
             )
             
@@ -642,9 +635,9 @@ class Mask:
         # .............................................................
 
         if append:
-            self.mask *= inner_mask.mask
+            self.data *= inner_mask.data
         else:
-            self.mask = inner_mask.mask
+            self.data = inner_mask.data
 
         # .............................................................
         # Finish timing
@@ -668,14 +661,14 @@ class Mask:
 
         plt.figure()
 
-        map = self.data.peak_map()
+        map = self.linked_data.peak_map()
 
         vmax = np.max(map[np.isfinite(map)])
         vmin = 0.0
         if scale != None:
-            if self.data.noise != None:
-                if self.data.noise.scale != None:
-                    vmax = scale*self.data.noise.scale
+            if self.linked_data.noise != None:
+                if self.linked_data.noise.scale != None:
+                    vmax = scale*self.linked_data.noise.scale
                     vmin = 0.0
 
         plt.imshow(
