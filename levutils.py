@@ -1,8 +1,6 @@
 import numpy as np
 from scipy.ndimage import label
 from scipy.ndimage import histogram
-from blobutils import connectivity
-from blobutils import get_all_blob_shapes
 import time
 
 # Utilities to deal with contour levels in an image.
@@ -108,85 +106,3 @@ def contour_values(
         levels = levels[::-1]
         return levels
 
-# ------------------------------------------------------------
-# IDENTIFY MERGER MATRIX FROM A SET OF LOCAL MAXIMA
-# ------------------------------------------------------------
-
-def merge_given_levels(
-    data,
-    seeds,
-    levels,
-    mask=None,
-    corners=False,
-    verbose = False,
-    timer = False
-    ):
-    
-    # Initialization
-    
-    if timer:
-        start=time.time()
-        full_start=time.time()
-        
-    if mask == None:
-        mask = np.isfinite(data)
-
-    connect = connectivity(data.ndim, corners=corners)
-
-    merger_matrix = np.zeros((len(seeds[0]), len(seeds[0])))*np.nan
-
-    # Loop over levels
-
-    for level in levels:
-
-        print level
-        # Label this level
-
-        labels, ncolors = label(mask*(data >= level) , structure=connect)
-
-        # Get the assignments for the seeds
-
-        seed_labels = labels[seeds]
-
-        # Get the number of discrete assignments
-
-        max_label = np.max(seed_labels)
-
-        if max_label == 0:
-            continue
-
-        # Histogram and look for merged cases
-
-        bins = np.arange(0.5,max_label+0.5,1)
-        hist_label = (np.histogram(seed_labels,bins=bins))[0]
-        digi_label = np.digitize(seed_labels,bins=bins)
-
-        multi_ind = ((hist_label > 1).nonzero())[0]
-
-        # Loop over merged cases
-        for ind in multi_ind:
-
-            shared_seeds = (((digi_label-1) == ind).nonzero())[0]
-#            print len(shared_seeds)
-
-            # Note the threshold in the matrix                        
-
-            for seed in shared_seeds:
-
-                # this step (weirdly) can take a lot of time
-
-                merger_matrix[seed, shared_seeds] = level
-                merger_matrix[shared_seeds, seed] = level
-
-    # Clean up diagonal
-    for i in range(len(seeds[0])):
-        merger_matrix[i,i] = np.nan
-
-    # Finish
-
-    if timer:
-        stop=time.time()
-        print "Merger calculations took ", stop-start
-        start=time.time()
-
-    return merger_matrix

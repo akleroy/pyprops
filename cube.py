@@ -530,9 +530,10 @@ class Cube:
                 # Put the spectral coord into the right place
                 pix[:,z_im] = ind.flatten()
                 
-                # The origin refers to the WCS, right? That's
-                # 1-indexed. Or does it refer to the array?
-                world = self.astropy_wcs.wcs_pix2world(pix,1)
+                # The origin refers to the array, right? That's
+                # 0-indexed because we are in numpy... but I'm only
+                # like 70% on this. When would you use 1?
+                world = self.astropy_wcs.wcs_pix2world(pix,0)
 
                 # Save the axis - for now assume it's velocity
                 self.vaxis = world[:,z_im].flatten()

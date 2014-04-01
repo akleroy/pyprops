@@ -28,6 +28,9 @@ class Data(cube.Cube):
     # Attributes (beyond Cube)
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
+    # ... associated noise
+    noise = None
+
     # ... a boolean array indicating regions with signal
     signal = None
 
