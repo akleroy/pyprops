@@ -297,7 +297,36 @@ class Cube:
             
         # ... read in coordinate system object
         if skipcs == False:
-            self.casa_cs = ia.coordsys()
+            if dropdeg:
+                temp_cs = ia.coordsys()
+
+                stokes = get_casa_axis(
+                    temp_cs,
+                    wanttype="Stokes",
+                    skipdeg=False,
+                    )
+
+                if stokes == None:
+                    order = np.arange(self.data.ndim)
+                else:
+                    order = []
+                    for ax in np.arange(self.data.ndim+1):
+                        if ax == stokes:
+                            continue
+                        order.append(ax)
+
+                self.casa_cs = ia.coordsys(order)
+                
+                # This should work, but coordsys.reorder() has a bug
+                # on the error checking. JIRA filed. Until then the
+                # axes will be reversed from the original.
+
+                #if transpose == True:
+                #    new_order = np.arange(self.data.ndim)
+                #    new_order = new_order[-1*np.arange(self.data.ndim)-1]
+                #    print new_order
+                #    self.casa_cs.reorder(new_order)
+            
             self.find_spec_axis()
             
         # ... close the ia tool
@@ -425,7 +454,171 @@ class Cube:
     # Handle coordinates
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=    
 
-    # ... generate arrays (sparser than imhead) of coordinates
+    def make_axes(
+        self,
+        mode=None,
+        sky_only=False,
+        freq_only=False,
+        restfreq=None):
+        """
+        Make coordinate axes from th WCS or coordsys information.
+        """
+
+        # Figure out which kind of data we have.
+        if mode == None:
+            if self.astropy_wcs != None:
+                mode="FITS"
+            elif self.casa_cs != None:
+                mode="CASA"
+            else:
+                print "Cannot determine coordinate system mode."
+                return
+
+        shape = self.data.shape        
+        ndim = self.data.ndim
+
+        if mode.upper() == "FITS":
+            pass
+
+        if mode.upper() == "CASA":
+            
+            # Copy the coordinate system (we will edit it)
+            cs_copy = self.casa_cs.copy()
+
+            # Set the units to degrees and Hz
+            units = []
+            for ctype in cs_copy.axiscoordinatetypes():
+                if ctype == "Direction":
+                    units.append('deg')
+                if ctype == "Spectral":
+                    units.append('Hz')
+                if ctype == "Stokes":
+                    units.append('')
+            cs_copy.setunits(units)
+
+            if restfreq != None:
+                cs_copy.setrestfreq(restfreq)
+                self.restfreq=restfreq
+            else:
+                # Else store the rest frequency in Hz.
+                self.restfreq=qa.convert(mycube.casa_cs.restfrequency(), "Hz")["value"]
+
+            # Build the spectral axis
+            if self.spec_axis != None and sky_only == False:
+
+                # Make an array of indices along the velocity axis
+                ind = np.indices((shape[self.spec_axis],))        
+
+                # Make an array of the same length with zeros for each coord.
+                pix = np.zeros((ndim,shape[self.spec_axis]))
+
+                if self.pyorder:
+                    pix[ndim-self.spec_axis-1,:] = ind.flatten()
+                else:
+                    pix[self.spec_axis,:] = ind.flatten()
+
+                world = cs_copy.toworldmany(pix)['numeric']
+                if self.pyorder:
+                    self.faxis = world[ndim-self.spec_axis-1,:].flatten()
+                else:
+                    self.faxis = world[self.spec_axis,:].flatten()
+                
+                # Convert to velocity
+                self.vaxis = np.array(cs_copy.frequencytovelocity(self.faxis))
+
+            # Build the spatial axes
+            if freq_only == False:
+
+                if ndim == 1:
+                    print "Can't yet to one-d spatial coordinates."
+
+                # This can be cleaned up a lot - just list the axis in
+                # the array and then do an operation on it if there's
+                # a tranposition to get to the casa version.
+                if ndim == 2:
+                    
+                    xcasa = 0
+                    ycasa = 1
+                    if self.pyorder:
+                        xshape = shape[1]
+                        yshape = shape[0]
+                        xaxis = 1
+                        yaxis = 0
+                    else:
+                        xshape = shape[0]
+                        yshape = shape[1]                        
+                        xaxis = 0
+                        yaxis = 1
+                
+                if self.spec_axis == 0:
+                    if self.pyorder:
+                        xcasa = 0
+                        ycasa = 1
+                        xshape = shape[2]
+                        yshape = shape[1]
+                        xaxis = 2
+                        yaxis = 1
+                    else:
+                        xcasa = 0
+                        ycasa = 1
+                        xshape = shape[0]
+                        yshape = shape[1]                        
+                        xaxis = 0
+                        yaxis = 1
+
+                if self.spec_axis == 1:
+                    if self.pyorder:
+                        xcasa = 0
+                        ycasa = 2
+                        xshape = shape[2]
+                        yshape = shape[0]
+                        xaxis = 2
+                        yaxis = 0
+                    else:
+                        xcasa = 0
+                        ycasa = 2
+                        xshape = shape[0]
+                        yshape = shape[2]                        
+                        xaxis = 0
+                        yaxis = 2
+
+                if self.spec_axis == 2:
+                    if self.pyorder:
+                        xcasa = 1
+                        ycasa = 2
+                        xshape = shape[0]
+                        yshape = shape[1]
+                        xaxis = 0
+                        yaxis = 1
+                    else:
+                        xcasa = 0
+                        ycasa = 1
+                        xshape = shape[0]
+                        yshape = shape[1]                        
+                        xaxis = 0
+                        yaxis = 1
+                    
+                # ... MAKE IMAGES OF INDICES IN THE (X,Y)
+                if self.pyorder:
+                    ind = np.indices((yshape,xshape))
+                    pix = np.zeros((ndim,yshape*xshape))                        
+                    pix[xcasa,:] = (ind[1,:,:]).flatten()
+                    pix[ycasa,:] = (ind[0,:,:]).flatten()
+                else:
+                    ind = np.indices((xshape,yshape))
+                    pix = np.zeros((ndim,xshape*yshape))                        
+                    pix[xcasa,:] = (ind[0,:,:]).flatten()
+                    pix[ycasa,:] = (ind[1,:,:]).flatten()
+
+                world = cs_copy.toworldmany(pix)['numeric']
+
+                # ... REFORM THE OUTPUT INTO X AND Y IMAGES
+                if self.pyorder == False:
+                    self.ximg = world[xcasa,:].reshape(xshape, yshape)
+                    self.yimg = world[ycasa,:].reshape(xshape, yshape)
+                else:
+                    self.ximg = world[xcasa,:].reshape(yshape, xshape)
+                    self.yimg = world[ycasa,:].reshape(yshape, xshape)
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Figure out which axis is spectral
@@ -483,6 +676,7 @@ class Cube:
                 self.spec_axis = None
                 return
 
+            self.spec_axis = spec_in_casa
             if self.pyorder == True:
                 # ... in this case we are transposed from the original order            
                 self.spec_axis = self.data.ndim - spec_in_casa - 1
@@ -556,3 +750,12 @@ def get_casa_axis(
 
     # ... return none if no match is found.
     return None
+
+def axis_num(
+    axis="x",
+    system="CASA",
+    ndim=3,
+    spec_axis=0):
+    
+    pass
+        
