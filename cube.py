@@ -24,7 +24,6 @@ except ImportError:
 else:
     astropy_ok = True
     
-
 # .............................
 # Try to import CASA modules
 # .............................
@@ -474,12 +473,97 @@ class Cube:
                 print "Cannot determine coordinate system mode."
                 return
 
+        # Work out the axis mapping between image on disk and array
+        # given an arbitrary spectral axis and the possibility of not
+        # being in "pyorder."
+
         shape = self.data.shape        
-        ndim = self.data.ndim
+        ndim = self.data.ndim        
+        if ndim == 2:
+            x_im = 0
+            y_im = 1
+
+        if ndim == 3 and self.spec_axis != None:
+            space_axes = []
+            for ax in np.arange(3):
+                if self.spec_axis == ax:
+                    continue
+                space_axes.append(ax)
+            if self.pyorder:
+                x_ar = space_axes[-1]
+                y_ar = space_axes[-2]
+            else:
+                x_ar = space_axes[0]
+                y_ar = space_axes[1]
+
+        if self.pyorder:
+            x_im = ndim - x_ar - 1
+            y_im = ndim - y_ar - 1
+            z_ar = self.spec_axis
+            z_im = ndim - z_ar - 1
+        else:
+            x_im = x_ar
+            y_im = y_ar
+            z_ar = self.spec_axis
+            z_im = z_ar        
+
+        # This can use some generalization. right now it makes sense
+        # for images aligned with a cardinal direction and still
+        # expects a lot out of the user. Some cleanup would not be
+        # very hard; e.g., use the radec flag on the pix-to-world
+        # conversion to end up with RA and DEC images. The spectral
+        # axis needs more help (CASA has the reverse situation), ask
+        # around about whether there's good code to handle that
+        # elsewhere.
 
         if mode.upper() == "FITS":
-            pass
 
+            # Build the spectral axis
+            if self.spec_axis != None and sky_only == False:
+
+                # Make an array of indices along the velocity axis
+                ind = np.indices((shape[z_ar],))        
+
+                # Make an array of the same length with zeros for each coord.
+                pix = np.zeros((shape[z_ar],ndim))
+
+                # Put the spectral coord into the right place
+                pix[:,z_im] = ind.flatten()
+                
+                # The origin refers to the WCS, right? That's
+                # 1-indexed. Or does it refer to the array?
+                world = self.astropy_wcs.wcs_pix2world(pix,1)
+
+                # Save the axis - for now assume it's velocity
+                self.vaxis = world[:,z_im].flatten()
+                            
+            # Build the spatial axes
+            if freq_only == False:
+
+                # ... MAKE IMAGES OF INDICES IN THE (X,Y)
+                if self.pyorder:
+                    ind = np.indices((shape[y_ar],shape[x_ar]))
+                    pix = np.zeros((shape[y_ar]*shape[x_ar], ndim))
+                    pix[:, x_im] = (ind[1,:,:]).flatten()
+                    pix[:, y_im] = (ind[0,:,:]).flatten()
+                else:
+                    ind = np.indices((shape[x_ar],shape[y_ar]))
+                    pix = np.zeros((shape[x_ar]*shape[y_ar],ndim))
+                    pix[:, x_im] = (ind[0,:,:]).flatten()
+                    pix[:, y_im] = (ind[1,:,:]).flatten()
+
+                world = self.astropy_wcs.wcs_pix2world(pix,1)
+
+                # ... REFORM THE OUTPUT INTO X AND Y IMAGES
+                if self.pyorder:
+                    self.ximg = world[:, x_im].reshape(shape[y_ar], shape[x_ar])
+                    self.yimg = world[:, y_im].reshape(shape[y_ar], shape[x_ar])
+                else:
+                    self.ximg = world[:, x_im].reshape(shape[x_ar], shape[y_ar])
+                    self.yimg = world[:, y_im].reshape(shape[x_ar], shape[y_ar])
+
+        # This needs testing with degenerate axes
+        
         if mode.upper() == "CASA":
             
             # Copy the coordinate system (we will edit it)
@@ -507,21 +591,17 @@ class Cube:
             if self.spec_axis != None and sky_only == False:
 
                 # Make an array of indices along the velocity axis
-                ind = np.indices((shape[self.spec_axis],))        
+                ind = np.indices((shape[z_ar],))        
 
                 # Make an array of the same length with zeros for each coord.
-                pix = np.zeros((ndim,shape[self.spec_axis]))
+                pix = np.zeros((ndim,shape[z_ar]))
+                
+                # Place the spectral index into the array
+                pix[z_im,:] = ind.flatten()
 
-                if self.pyorder:
-                    pix[ndim-self.spec_axis-1,:] = ind.flatten()
-                else:
-                    pix[self.spec_axis,:] = ind.flatten()
-
+                # Extract the frequency axis
                 world = cs_copy.toworldmany(pix)['numeric']
-                if self.pyorder:
-                    self.faxis = world[ndim-self.spec_axis-1,:].flatten()
-                else:
-                    self.faxis = world[self.spec_axis,:].flatten()
+                self.faxis = world[z_im,:].flatten()
                 
                 # Convert to velocity
                 self.vaxis = np.array(cs_copy.frequencytovelocity(self.faxis))
@@ -531,94 +611,28 @@ class Cube:
 
                 if ndim == 1:
                     print "Can't yet to one-d spatial coordinates."
-
-                # This can be cleaned up a lot - just list the axis in
-                # the array and then do an operation on it if there's
-                # a tranposition to get to the casa version.
-                if ndim == 2:
-                    
-                    xcasa = 0
-                    ycasa = 1
-                    if self.pyorder:
-                        xshape = shape[1]
-                        yshape = shape[0]
-                        xaxis = 1
-                        yaxis = 0
-                    else:
-                        xshape = shape[0]
-                        yshape = shape[1]                        
-                        xaxis = 0
-                        yaxis = 1
-                
-                if self.spec_axis == 0:
-                    if self.pyorder:
-                        xcasa = 0
-                        ycasa = 1
-                        xshape = shape[2]
-                        yshape = shape[1]
-                        xaxis = 2
-                        yaxis = 1
-                    else:
-                        xcasa = 0
-                        ycasa = 1
-                        xshape = shape[0]
-                        yshape = shape[1]                        
-                        xaxis = 0
-                        yaxis = 1
-
-                if self.spec_axis == 1:
-                    if self.pyorder:
-                        xcasa = 0
-                        ycasa = 2
-                        xshape = shape[2]
-                        yshape = shape[0]
-                        xaxis = 2
-                        yaxis = 0
-                    else:
-                        xcasa = 0
-                        ycasa = 2
-                        xshape = shape[0]
-                        yshape = shape[2]                        
-                        xaxis = 0
-                        yaxis = 2
-
-                if self.spec_axis == 2:
-                    if self.pyorder:
-                        xcasa = 1
-                        ycasa = 2
-                        xshape = shape[0]
-                        yshape = shape[1]
-                        xaxis = 0
-                        yaxis = 1
-                    else:
-                        xcasa = 0
-                        ycasa = 1
-                        xshape = shape[0]
-                        yshape = shape[1]                        
-                        xaxis = 0
-                        yaxis = 1
                     
                 # ... MAKE IMAGES OF INDICES IN THE (X,Y)
                 if self.pyorder:
-                    ind = np.indices((yshape,xshape))
-                    pix = np.zeros((ndim,yshape*xshape))                        
-                    pix[xcasa,:] = (ind[1,:,:]).flatten()
-                    pix[ycasa,:] = (ind[0,:,:]).flatten()
+                    ind = np.indices((shape[y_ar],shape[x_ar]))
+                    pix = np.zeros((ndim,shape[y_ar]*shape[x_ar]))                        
+                    pix[x_im,:] = (ind[1,:,:]).flatten()
+                    pix[y_im,:] = (ind[0,:,:]).flatten()
                 else:
-                    ind = np.indices((xshape,yshape))
-                    pix = np.zeros((ndim,xshape*yshape))                        
-                    pix[xcasa,:] = (ind[0,:,:]).flatten()
-                    pix[ycasa,:] = (ind[1,:,:]).flatten()
+                    ind = np.indices((shape[x_ar],shape[y_ar]))
+                    pix = np.zeros((ndim,shape[x_ar]*shape[y_ar]))                        
+                    pix[x_im,:] = (ind[0,:,:]).flatten()
+                    pix[y_im,:] = (ind[1,:,:]).flatten()
 
                 world = cs_copy.toworldmany(pix)['numeric']
 
                 # ... REFORM THE OUTPUT INTO X AND Y IMAGES
-                if self.pyorder == False:
-                    self.ximg = world[xcasa,:].reshape(xshape, yshape)
-                    self.yimg = world[ycasa,:].reshape(xshape, yshape)
+                if self.pyorder:
+                    self.ximg = world[x_im,:].reshape(shape[y_ar], shape[x_ar])
+                    self.yimg = world[y_im,:].reshape(shape[y_ar], shape[x_ar])
                 else:
-                    self.ximg = world[xcasa,:].reshape(yshape, xshape)
-                    self.yimg = world[ycasa,:].reshape(yshape, xshape)
+                    self.ximg = world[x_im,:].reshape(shape[x_ar], shape[y_ar])
+                    self.yimg = world[y_im,:].reshape(shape[x_ar], shape[y_ar])
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Figure out which axis is spectral
