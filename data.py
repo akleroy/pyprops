@@ -79,8 +79,10 @@ class Data(cube.Cube):
 
         if axis==None:
             return self.data
-        else:
-            return np.max(self.data, axis=axis)
+        else:            
+            data = self.data.copy()
+            data[self.valid==False] = np.min(self.data[self.valid])
+            return np.max(data, axis=axis)
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Interaction with other classes

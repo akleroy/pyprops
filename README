@@ -17,25 +17,20 @@ mask - create, manipulate, and read/write masks. Inherits cube.
 
 noise - defines a class to derive noise estimates
 
+lmax - identifies local maxima
+
 struct - helper class to build morphological structuring elements
 
 --------------------
 NEXT STEPS
 --------------------
 
-- Coordinate handling in "cube" - important for workshop in order to 
-
 - Beam handling in "cube"
 
-- Unit handling in "data"
-  * Jy <-> K main hurdle
-
-- Local maximum object
-  * local max identification
-  * merge calculation
+- Unit handling in "data" (Jy <-> K main hurdle, leverage astropy)
 
 - Automatic masking parameters from negative (accept a thresholding
-  definition and suggest a value that yields no negatives.
+  definition and suggest a value that yields no negatives).
 
 - Assignment object
 
@@ -55,9 +50,9 @@ NEXT STEPS
   is something that lives on its own or is always recomputed on the
   fly. I like the former.
 
-- a general is_kosher() function that runs a suite of sanity checks
-  and reports back. Cleaning up some of this stuff is out of scope but
-  we can at least shout on units, untyped axes, axis order, etc.
+- a general validate() function that runs a suite of sanity checks and
+  reports back. Cleaning up some of this stuff is out of scope but we
+  can at least shout on units, untyped axes, axis order, etc.
 
 --------------------
 OTHER DIRECTIONS
@@ -73,4 +68,35 @@ OTHER DIRECTIONS
   minimum sized noise object.
 
 - spectral stacking implementation
+
+--------------------
+COMMENTS
+--------------------
+
+- Basically, every cube operation for something the size of the
+  Antennae Cycle 0 takes about 1-2s for a single numpy cube operation.
+
+- The merge calculation is slow. Not prohibitively, but N labelings of
+  a big cube are heading in that direction. The issue is at least
+  partially that the whole cube is thrown in and repeatedly processed
+  in operations where only a tiny fraction of the data are
+  interesting. Right now it's ~2 seconds per label operation on the
+  Antennae, so ~3 minutes to get the matrix for 100 levels.
+
+- We may want a "blank value" for the cube object (in addition to the
+  validity flag). Masked arrays are still a mixed bag and adding a
+  blanking step to the beginning of each task makes things
+  slow. Similarly, pre-computing the min and max would probably be
+  useful. My rough checks are that doing this prep within each program
+  takes something like 5-6 seconds, which adds up. Alternatively, we
+  may want a high level routine in cube or data object to expose a
+  numpy-friendly object with a blank value filled in. Issue is that
+  what we want is not obvious (its 0 for summing, it's a very low or
+  high value for masking).
+
+- Easy link to astrodendro: cube + mask + valid to set invalid values
+  to floor, then pass the manipulated cube in. It's comparably slow to
+  merging when fed the whole cube but speeds up rapidly when heavily
+  downselected first, which makes sense. Twiddle a minute on the
+  Antennae with 3-sigma clipping (~1% of the data).
 

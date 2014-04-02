@@ -42,7 +42,7 @@ else:
 # CUBE CLASS
 # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
 
-class Cube:
+class Cube(object):
     """ 
     
     Parent class to hold data and supporting information for a data

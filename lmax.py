@@ -110,11 +110,11 @@ class Lmax():
         # Start the timer if requested
         if timer:
             start=time.time()
-            full_start=time.time()
 
         # Copy the data to suppress emission outside the mask by
         # setting it to a low value (less than the original minimum of
         # the data).
+
         data = copy.deepcopy(self.data.data)
         low_value = np.min(data[self.data.valid])-1.
         data[self.data.valid == False] = low_value
@@ -141,9 +141,13 @@ class Lmax():
         footprint = np.ones(uniform_size)
         uniform_total = (sky_halfbox*2+1)* \
             (sky_halfbox*2+1)* \
-            (spec_halfbox*2+1)
+            (spec_halfbox*2+1)*1.
 
         # Apply the filter
+
+        # Start the timer if requested
+        if timer:
+            start_max=time.time()
 
         # Make an image that's equal to the maximum
         max_image = maximum_filter(
@@ -152,18 +156,22 @@ class Lmax():
             mode="constant", 
             cval=low_value)
         lmax_cube = (data == max_image)*(data != low_value)
-        #self.max_image = max_image
-        #print np.sum(lmax_cube)
+
+        if timer:
+            stop_max=time.time()
+            start_count=time.time()
+            print "Maximum filter took ", stop_max-start_max
 
         # Fast... but forces a square search kernel
         max_count = uniform_filter(
-            lmax_cube*1.,
+            lmax_cube*uniform_total,
             size=uniform_size,
-            mode="constant", cval=0.)* \
-            uniform_total
-        #self.max_count = max_count
+            mode="constant", cval=0.)
         lmax_cube *= (max_count == 1)
-        #print np.sum(lmax_cube)
+
+        if timer:
+            stop_count=time.time()
+            print "Maximum count took ", stop_count-start_count
 
         # This works and is clean and arbitrary-shaped, but it's
         # incredibly slow:
@@ -212,31 +220,42 @@ class Lmax():
             print "Find candidate local maxima before calculating mergers."
             return
 
-        # Initialize default levels
-        if levels == None:
-            levels = contour_values(
-                linspace = True,
-                nlev = 100,
-                maxval = np.max(self.data.data[self.data.valid]),
-                minval = np.min(self.data.data[self.data.valid]),
-                )
-
         # Copy the data to suppress emission outside the mask by
         # setting it to a low value (less than the original minimum of
         # the data).
 
         data = copy.deepcopy(self.data.data)
-        low_value = np.min(data[self.data.valid])-1.
-        data[self.data.valid == False] = low_value
         if self.mask != None:
-            data[self.mask.data == False] = low_value
-                        
-        # Set up a default mask
-        
-        if self.mask == None:
-            mask = np.isfinite(self.data.valid)
+            use = self.mask.data*self.data.valid
         else:
-            mask = self.mask.data*self.data.valid
+            use = self.data.valid
+        min_use = np.min(self.data.data[use])
+        max_use = np.max(self.data.data[use])
+        low_value = min_use-1.
+        data[(use==False)] = low_value
+
+        # Initialize default levels - if we have a noise value, treat
+        # the RMS as a reasonable spacing (arguing that we cannot
+        # distinguish much more than this finely). Else space 100
+        # levels between the minimum and maximum value.
+
+        if levels == None:
+            if self.data.noise != None:
+                levels = contour_values(
+                    linspace = True,
+                    maxval = max_use,
+                    minval = min_use,                
+                    spacing = 1.0*self.data.noise.scale
+                    )
+            else:
+                levels = contour_values(
+                    linspace = True,
+                    maxval = max_use,
+                    minval = min_use,                
+                    nlev = 100
+                    )
+
+        print levels
 
         # Build the connectivity structure
 
@@ -245,7 +264,14 @@ class Lmax():
                 ndim=data.ndim,                
                 corners=corners)).struct
 
+        # Initialize the output
+
         self.merger_matrix = np.zeros((len(self.num), len(self.num)))*np.nan
+
+        if timer:
+            stop=time.time()
+            print "Prep took ", stop-start
+            start=time.time()
 
         # Loop over levels
 
@@ -255,12 +281,16 @@ class Lmax():
             
             perc = count*1./nlev
             sys.stdout.write('\r')            
-            sys.stdout.write("[%-20s] %d%%" % ('='*int(perc*5), int(perc*100)))
+            sys.stdout.write("Calculating merger for level %d out of %d" % (count, nlev))
             sys.stdout.flush()
             count += 1
 
             # Label this level
-            labels, ncolors = label(mask*(data >= level) , structure=structure)
+            thresh = (data >= level)
+
+            labels, ncolors = label(
+                thresh,
+                structure=structure)
 
             # Get the assignments for the seeds
             seed_labels = labels[self.pix]
@@ -304,6 +334,38 @@ class Lmax():
     # Reject Local Maxima
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
+    def keep_lmax_subset(
+        self,
+        keep=None
+        ):
+        """
+        ...
+        """
+
+        if keep == None:
+            return
+
+        if len(pix) == 3:
+            new_pix = (
+                self.pix[0][keep],
+                self.pix[1][keep],
+                self.pix[2][keep],            
+                )
+            if self.merger_matrix == None:                
+                new_merger = self.merger_matrix[keep]
+                new_merger = new_merger[:,keep]
+        if len(pix) == 2:
+            new_pix = (
+                self.pix[0][keep],
+                self.pix[1][keep],
+                )
+            if self.merger_matrix == None:                
+                new_merger = self.merger_matrix[keep]
+                new_merger = new_merger[:,keep]
+        self.pix = new_pix
+        self.merger = new_merger
+        self.num = np.arange(len(self.pix[0]))
+
     def reject_on_value(
         self,
         thresh=3.0,
@@ -331,14 +393,8 @@ class Lmax():
                 keep[i] = False
             
             i += 1
-
-        new_pix = (
-            self.pix[0][keep],
-            self.pix[1][keep],
-            self.pix[2][keep],
-            )
-        self.pix = new_pix
-        self.num = np.arange(len(self.pix[0]))
+        
+        self.keep_lmax_subset(keep)
 
     def reject_on_delta(
         self,
@@ -375,11 +431,5 @@ class Lmax():
             
             i += 1
 
-        new_pix = (
-            self.pix[0][keep],
-            self.pix[1][keep],
-            self.pix[2][keep],
-            )
-        self.pix = new_pix
-        self.num = np.arange(len(self.pix[0]))
+        self.keep_lmax_subset(keep)
 
