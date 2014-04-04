@@ -33,12 +33,15 @@ class Lmax():
     # Attributes
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    num = None
-    pix = None
+    num = 0
+    name = None
+    indices = None
+    val = None
+
     merger_matrix = None
     
-    data = None
-    mask = None
+    linked_data = None
+    linked_mask = None
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Initialize
@@ -69,7 +72,7 @@ class Lmax():
         Link the lmax object to a data object.
         """
         if val != None:
-            self.data = val
+            self.linked_data = val
 
     def link_to_mask(
         self,
@@ -79,11 +82,74 @@ class Lmax():
         Link the lmax object to a mask object.
         """
         if val != None:
-            self.mask = val
+            self.linked_mask = val
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Read/write
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    # Manipulate local maxima by hand
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    def add_local_max(
+        self,
+        new_indices=None,
+        append=True
+        ):
+        """
+        """        
+        if new_indices == None:
+            return
+        
+        if new_indices.ndim == 1:
+            new_indices = new_indices.reshape(self.linked_data.data.ndim,1)
+
+        if append and self.indices != None:
+            new_indices = np.append(self.indices, new_indices, 1)
+        else:
+            new_indices = new_indices
+
+        self.indices = new_indices
+        self.recalc_from_ind()
+        
+    def del_local_max(
+        self,
+        ):
+        """
+        """
+        pass
+
+    def recalc_from_ind(
+        self
+        ):
+        self.val = self.linked_data.data[self.as_tuple()]
+        self.num = len(self.indices[0,:])
+        self.name = np.arange(self.num)
+
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+    # Access
+    # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    
+
+    def as_tuple(
+        self
+        ):
+        """
+        Return indices as tuple.
+        """
+        dim = self.indices.shape[0]
+
+        if dim == 1:
+            return (self.indices[0,:])
+        if dim == 2:
+            return (self.indices[0,:],
+                    self.indices[1,:])
+        if dim == 3:
+            return (self.indices[0,:],
+                    self.indices[1,:],
+                    self.indices[2,:])
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Find local maxima
@@ -106,34 +172,39 @@ class Lmax():
         Extract local maxima using a maximum filter.
         """
         
-
+        # ............................
         # Start the timer if requested
+        # ............................
         if timer:
             start=time.time()
 
+        # ........................................................
         # Copy the data to suppress emission outside the mask by
         # setting it to a low value (less than the original minimum of
         # the data).
+        # ........................................................
 
-        data = copy.deepcopy(self.data.data)
-        low_value = np.min(data[self.data.valid])-1.
-        data[self.data.valid == False] = low_value
-        if self.mask != None:
-            data[self.mask.data == False] = low_value
+        data = copy.deepcopy(self.linked_data.data)
+        low_value = np.min(data[self.linked_data.valid])-1.
+        data[self.linked_data.valid == False] = low_value
+        if self.linked_mask != None:
+            data[self.linked_mask.data == False] = low_value
 
+        # ........................................................
         # Generate the filter and handle dimensions
+        # ........................................................
 
-        if self.data.spec_axis == 0:
+        if self.linked_data.spec_axis == 0:
             uniform_size = (spec_halfbox*2+1,
                             sky_halfbox*2+1,
                             sky_halfbox*2+1)
 
-        if self.data.spec_axis == 1:
+        if self.linked_data.spec_axis == 1:
             uniform_size = (sky_halfbox*2+1,
                             spec_halfbox*2+1,
                             sky_halfbox*2+1)
 
-        if self.data.spec_axis == 2:
+        if self.linked_data.spec_axis == 2:
             uniform_size = (sky_halfbox*2+1,
                             sky_halfbox*2+1,
                             spec_halfbox*2+1)
@@ -143,13 +214,10 @@ class Lmax():
             (sky_halfbox*2+1)* \
             (spec_halfbox*2+1)*1.
 
+        # ........................................................
         # Apply the filter
-
-        # Start the timer if requested
-        if timer:
-            start_max=time.time()
-
-        # Make an image that's equal to the maximum
+        # ........................................................
+        
         max_image = maximum_filter(
             data, 
             footprint=footprint,
@@ -157,21 +225,12 @@ class Lmax():
             cval=low_value)
         lmax_cube = (data == max_image)*(data != low_value)
 
-        if timer:
-            stop_max=time.time()
-            start_count=time.time()
-            print "Maximum filter took ", stop_max-start_max
-
-        # Fast... but forces a square search kernel
         max_count = uniform_filter(
             lmax_cube*uniform_total,
             size=uniform_size,
             mode="constant", cval=0.)
         lmax_cube *= (max_count == 1)
 
-        if timer:
-            stop_count=time.time()
-            print "Maximum count took ", stop_count-start_count
 
         # This works and is clean and arbitrary-shaped, but it's
         # incredibly slow:
@@ -191,9 +250,16 @@ class Lmax():
         
         # Extract the maxima
 
-        self.pix = (lmax_cube).nonzero()
-        
-        self.num = np.arange(len(self.pix[0]))
+        # ........................................................
+        # Record the maxima
+        # ........................................................
+
+        self.indices = np.vstack(np.where(lmax)).transpose()
+        self.recalc_from_ind()
+
+        # ........................................................
+        # Report on timing
+        # ........................................................
 
         if timer:        
             stop=time.time()
@@ -216,7 +282,7 @@ class Lmax():
             start=time.time()
             full_start=time.time()
 
-        if self.num == None or self.pix == None:
+        if self.num == 0 or self.indices == None:
             print "Find candidate local maxima before calculating mergers."
             return
 
@@ -224,13 +290,13 @@ class Lmax():
         # setting it to a low value (less than the original minimum of
         # the data).
 
-        data = copy.deepcopy(self.data.data)
-        if self.mask != None:
-            use = self.mask.data*self.data.valid
+        data = copy.deepcopy(self.linked_data.data)
+        if self.linked_mask != None:
+            use = self.linked_mask.data*self.linked_data.valid
         else:
-            use = self.data.valid
-        min_use = np.min(self.data.data[use])
-        max_use = np.max(self.data.data[use])
+            use = self.linked_data.valid
+        min_use = np.min(self.linked_data.data[use])
+        max_use = np.max(self.linked_data.data[use])
         low_value = min_use-1.
         data[(use==False)] = low_value
 
@@ -240,12 +306,12 @@ class Lmax():
         # levels between the minimum and maximum value.
 
         if levels == None:
-            if self.data.noise != None:
+            if self.linked_data.noise != None:
                 levels = contour_values(
                     linspace = True,
                     maxval = max_use,
                     minval = min_use,                
-                    spacing = 1.0*self.data.noise.scale
+                    spacing = 1.0*self.linked_data.noise.scale
                     )
             else:
                 levels = contour_values(
@@ -264,7 +330,7 @@ class Lmax():
 
         # Initialize the output
 
-        self.merger_matrix = np.zeros((len(self.num), len(self.num)))*np.nan
+        self.merger_matrix = np.zeros((self.num, self.num))*np.nan
 
         if timer:
             stop=time.time()
@@ -291,7 +357,7 @@ class Lmax():
                 structure=structure)
 
             # Get the assignments for the seeds
-            seed_labels = labels[self.pix]
+            seed_labels = labels[self.as_tuple()]
 
             # Get the number of discrete assignments
             max_label = np.max(seed_labels)
@@ -319,7 +385,7 @@ class Lmax():
                     self.merger_matrix[shared_seeds, seed] = level
 
         # Clean up diagonal
-        for i in range(len(self.num)):
+        for i in range(self.num):
             self.merger_matrix[i,i] = np.nan
 
         # Finish
@@ -343,26 +409,15 @@ class Lmax():
         if keep == None:
             return
 
-        if len(pix) == 3:
-            new_pix = (
-                self.pix[0][keep],
-                self.pix[1][keep],
-                self.pix[2][keep],            
-                )
-            if self.merger_matrix == None:                
-                new_merger = self.merger_matrix[keep]
-                new_merger = new_merger[:,keep]
-        if len(pix) == 2:
-            new_pix = (
-                self.pix[0][keep],
-                self.pix[1][keep],
-                )
-            if self.merger_matrix == None:                
-                new_merger = self.merger_matrix[keep]
-                new_merger = new_merger[:,keep]
-        self.pix = new_pix
+        self.indices = self.indices[:,keep]
+        
+        if self.merger_matrix == None:                
+            new_merger = self.merger_matrix[keep]
+            new_merger = new_merger[:,keep]
         self.merger = new_merger
-        self.num = np.arange(len(self.pix[0]))
+
+        self.num = len(self.pix[0])
+        self.name = np.arange(self.num)
 
     def reject_on_value(
         self,
@@ -375,9 +430,9 @@ class Lmax():
         """
 
         if snr:
-            data = self.data.snr()
+            data = self.linked_data.snr()
         else:
-            data = self.data.data
+            data = self.linked_data.data
         
         keep = (self.num == self.num)
         i = 0
@@ -407,9 +462,9 @@ class Lmax():
             print "You need to calculate the merger matrix."
 
         if snr:
-            data = self.data.snr()
+            data = self.linked_data.snr()
         else:
-            data = self.data.data
+            data = self.linked_data.data
 
         keep = (self.num == self.num)
         i = 0
