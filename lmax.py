@@ -255,8 +255,6 @@ class Lmax():
                     nlev = 100
                     )
 
-        print levels
-
         # Build the connectivity structure
 
         structure = (Struct(

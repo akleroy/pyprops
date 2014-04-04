@@ -446,9 +446,11 @@ class Mask(cube.Cube):
         thresh=4.0,
         nchan=2,
         outof=None,
+        validonly=True,
         append=False,
         backup=False,
-        timer=False
+        timer=False,
+        verbose=True
         ):
         """
         Masking using joint velocity channel conditions.
@@ -497,6 +499,8 @@ class Mask(cube.Cube):
         # Set defaults and catch errors
         # .............................................................
 
+        nchan = int(nchan)
+
         # default out_of to nchan
         if outof==None:
             outof = nchan
@@ -504,6 +508,10 @@ class Mask(cube.Cube):
         # catch error case
         if outof < nchan:
             outof = nchan 
+
+        if verbose:
+            print "Thresholding in "+str(nchan)+ \
+                " out of "+str(outof)+" channels."
 
         # .............................................................
         # Get the data that we will work with
@@ -519,7 +527,9 @@ class Mask(cube.Cube):
         # .............................................................
 
         # initial mask set by threshold
-        new_mask = np.int_(working_data >= thresh*scale)
+        base_mask = (working_data >= thresh*scale)
+        if verbose:
+            print " ... total after initial threshold: ", np.sum(base_mask)
 
         # If we have a spectral axis apply the joint conditions
         if self.spec_axis != None and self.linked_data.data.ndim > 2:
@@ -527,29 +537,39 @@ class Mask(cube.Cube):
             # roll the cube "out_of" times along the spectral axis and keep a
             # running tally of the number of points above the threshold by
             # summing mask.
-            for i in np.arange(outof):
-                new_mask += np.roll(new_mask,i,self.spec_axis)
+            rolled = np.int_(base_mask)
+            for i in (np.arange(1,outof,1)):
+                rolled += np.roll(base_mask,i,axis=self.spec_axis)
     
             # keep only points in the mask which meet the "nchan" criteria
-            new_mask = (new_mask >= nchan)
+            base_mask = (rolled >= nchan)
+            if verbose:
+                print " ... total after roll: ", np.sum(base_mask)
 
             # roll the mask in the other direction to ensure that all points
             # that contributed to the valid point are included in the final
             # mask
-            for i in np.arange(outof):
-                new_mask += np.roll(new_mask,-i,self.spec_axis)
+            rolled = np.int_(base_mask)
+            for i in (np.arange(1,outof,1)):
+                rolled += np.roll(base_mask,-1*i,axis=self.spec_axis)
 
             # calculate the final mask, adding a finite check, now a bool
-            new_mask = (new_mask >= 1)
+            base_mask = (rolled >= 1)
+
+            if verbose:
+                print " ... total after roll back: ", np.sum(base_mask)
 
         # .............................................................
         # Append or replace
         # .............................................................
 
         if append:
-            self.data *= new_mask
+            self.data *= base_mask
         else:
-            self.data = new_mask
+            self.data = base_mask
+
+        if validonly:
+            self.data *= self.linked_data.valid
 
         # .............................................................
         # Finish timing
