@@ -88,9 +88,13 @@ class Lmax():
     # Read/write
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
+    # TBD
+
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Manipulate local maxima by hand
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    # Some of this is pretty inefficient...
 
     def add_local_max(
         self,
@@ -103,16 +107,18 @@ class Lmax():
             return
         
         if new_indices.ndim == 1:
-            new_indices = new_indices.reshape(self.linked_data.data.ndim,1)
+            new_indices = new_indices.reshape(1,self.linked_data.data.ndim)
 
         if append and self.indices != None:
-            new_indices = np.append(self.indices, new_indices, 1)
+            new_indices = np.append(self.indices, new_indices, 0)
         else:
             new_indices = new_indices
 
         self.indices = new_indices
         self.recalc_from_ind()
         
+        return self.name[-1]
+
     def del_local_max(
         self,
         ):
@@ -124,8 +130,8 @@ class Lmax():
         self
         ):
         self.val = self.linked_data.data[self.as_tuple()]
-        self.num = len(self.indices[0,:])
-        self.name = np.arange(self.num)
+        self.num = self.indices.shape[0]
+        self.name = np.arange(self.num)+1
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Access
@@ -139,17 +145,8 @@ class Lmax():
         """
         Return indices as tuple.
         """
-        dim = self.indices.shape[0]
 
-        if dim == 1:
-            return (self.indices[0,:])
-        if dim == 2:
-            return (self.indices[0,:],
-                    self.indices[1,:])
-        if dim == 3:
-            return (self.indices[0,:],
-                    self.indices[1,:],
-                    self.indices[2,:])
+        return cube.xyzarr_to_tuple(self.indices, coordaxis=1)
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Find local maxima

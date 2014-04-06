@@ -35,6 +35,7 @@ class Assign(cube.Cube):
     linked_lmax = None
 
     nclouds = None
+    levels = None
     slices = None
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -174,22 +175,39 @@ class Assign(cube.Cube):
     # Clumpfind Assignment
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-    # Seeded
-
-    def clumpfind_orig(
+    def clumpfind(
         self,
         levels=None,
         corners=False,
+        seeded=False,
+        allow_new_peaks=True,
         timer=True
         ):
         """
         Generate a clumpfind assignment mask.
         """
 
+        # ...................................................
+        # Check user options
+        # ...................................................
+
         if self.linked_data == None:
             print "Clumpfind assignment requires data."
             return
         
+        if seeded == True:
+            if self.linked_lmax == None:
+                print "Seeded clumpfind assignment requires local maxima."
+                return
+        
+        if seeded == False and allow_new_peaks == False:
+            print "Cannot run an unseeded (classic) clumpfind without being able to add seeds."
+            return
+
+        # ...................................................
+        # Get data to use
+        # ...................................................            
+
         # Get the data and set the values we will not use to a low
         # number that will be ignored by the algorithm.
 
@@ -203,7 +221,9 @@ class Assign(cube.Cube):
         low_value = min_use-1.
         data[(use==False)] = low_value
 
-        # Calculate contour levels to use
+        # ...................................................
+        # Calculate contour levels
+        # ...................................................
 
         if levels == None:
             if self.linked_data.noise != None:
@@ -218,93 +238,180 @@ class Assign(cube.Cube):
                 print "Need a noise estimate."
                 return
 
-        print levels
+        self.levels = levels
 
+        # ...................................................
         # Build the structuring element
+        # ...................................................
 
         structure = (Struct(
                 "simple", 
                 ndim=self.linked_data.data.ndim,                
                 corners=corners)).struct
 
+        # ...................................................
         # Initialize the output
+        # ...................................................
 
         # ... data
         self.data = np.zeros_like(data, dtype=np.int)
-        # ... local maxima
-        self.linked_lmax = \
-            lmax.Lmax(self.linked_data, self.linked_mask)
 
+        # ... local maxima
+        if seeded == False:
+            print "Initializing a new set of local maxima"
+            self.linked_lmax = \
+                lmax.Lmax(self.linked_data, self.linked_mask)
+
+        # ...................................................
         # Loop over levels (from high to low)
-        next_cloud = 1
+        # ...................................................
+
         nlev = len(levels)
         count = 0
+
         for level in levels:            
 
-            # Counter
+            # ........................
+            # Print a counter
+            # ........................
+
             perc = count*1./nlev
             sys.stdout.write('\r')            
             sys.stdout.write("Clumpfind level %d out of %d" % (count, nlev))
             sys.stdout.flush()
             count += 1
 
-            # Label this level
+            # ............................
+            # Label regions for this level
+            # ............................
+
             thresh = (data >= level)
             labels, ncolors = ndimage.label(
                 thresh,
                 structure=structure)
             
-            # Vectorize
-            ind_vec = np.where(thresh)
-            val_vec = self.linked_data.data[ind_vec]
-            ind_vec_arr = np.vstack(ind_vec).transpose()
-            label_vec = labels[ind_vec]
-            
+            # ...........................
+            # Vectorize the labeled data
+            # ...........................
+
+            # This gives a big speedup for sparse data.
+
+            ind = np.where(thresh)
+            val = self.linked_data.data[ind]
+            ind_arr = cube.xyztup_to_array(ind, coordaxis=1)
+            label_vec = labels[ind]
+
             # Get the assignments for the current seeds
             if self.linked_lmax.num > 0:
                 seed_labels = labels[self.linked_lmax.as_tuple()]
-            else:
-                noseeds = True
             
-            # Slow, improve later
+            # ........................................
+            # Loop over discrete regions at this level
+            # ........................................
+
             for label in range(1,ncolors+1):
                 
-                this_ind = np.where(label_vec == label)
-                sub_val_vec = val_vec[this_ind]                
-                sub_ind_vec_arr = ind_vec_arr[this_ind[0],:]
-                sub_ind = tuple((ind_vec[i])[this_ind] for i in range(ind_vec_arr.shape[1]))
+                # ........................................
+                # Get the indices for this region
+                # ........................................
 
-                # No matching labels
-                if noseeds == True:
-                    add_new_peak = True
+                this_color = np.where(label_vec == label)
+                this_val = val[this_color]
+                this_ind_arr = ind_arr[this_color[0],:]
+                this_ind = cube.xyzarr_to_tuple(this_ind_arr,coordaxis=1)
+
+                # ........................................
+                # Check if we should add a new peak
+                # ........................................
+
+                # If there are no peaks or if there are no peaks in
+                # this region, we want to add a new one --- but only
+                # if that's allowed! 
+
+                # A future extension is to add additional criteria
+                # that must be met to add a peak (volume, area, etc.)
+
+                if self.linked_lmax.num == 0:
+                    if allow_new_peaks:
+                        add_a_new_peak = True
+                    else:
+                        continue
                 elif np.sum(seed_labels == label) == 0:
-                    add_new_peak = True
+                    if allow_new_peaks:
+                        add_a_new_peak = True
+                    else:
+                        continue
                 else:
-                    add_new_peak = False
+                    add_a_new_peak = False
                     
-                if add_new_peak:
-                    # find the 
-                    maxind = np.where(sub_val_vec == np.max(sub_val_vec))
-                    # ... keep only first one
-                    maxind = maxind[0]
-                    if len(maxind) > 1:
-                        maxind = maxind[0]
-                    maxind = int(maxind)
-                    peak_index = sub_ind_vec_arr[maxind,:]
-                    self.linked_lmax.add_local_max(peak_index)
-                    self.data[sub_ind] = \
-                        np.max(self.linked_lmax.name)
+                # ........................................
+                # Add a new peak
+                # ........................................
+
+                if add_a_new_peak:
+
+                    # Find the location of the maximum value
+                    maxind = np.argmax(this_val)
+
+                    # Get the corresponding coordinates
+                    peak_index = this_ind_arr[maxind,:]
+
+                    # Add a local maximum
+                    new_name = self.linked_lmax.add_local_max(peak_index)
+
+                    # Label these data in the assignment cube
+                    self.data[this_ind] = new_name
+
                     continue
 
-                # One matching labels, label
+                # ........................................
+                # Deal with the case of a signle seed
+                # ........................................
+
                 if np.sum(seed_labels == label) == 1:
-                    self.data[sub_ind] = \
-                        self.linked_lmax.name[np.where((seed_labels == label))]
+                    
+                    maxind = np.where((seed_labels == label))
+
+                    self.data[this_ind] = self.linked_lmax.name[maxind]
+
                     continue
+
+                # ........................................
+                # Deal with the case of competing seeds
+                # ........................................
 
                 # Several matching labels
                 if np.sum(seed_labels == label) > 1:
-                    pass
+
+                    # Initialize an assignment vector
+                    this_assign = np.zeros_like(this_val)
+                    best_dist = np.zeros_like(this_val)
+
+                    # Identify the competing seeds
+                    maxind = np.where((seed_labels == label))
+
+                    n_max = len(maxind[0])
+
+                    for i in range(n_max):
+                        
+                        this_max_name = self.linked_lmax.name[maxind[0][i]]
+
+                        this_max_coord = self.linked_lmax.indices[this_max_name-1]
+
+                        dist_to_this_max = \
+                            np.sum((this_ind_arr - this_max_coord)**2,axis=1)
+                        
+                        if i == 0:
+                            # ... all true for the first test
+                            is_closest = (dist_to_this_max == dist_to_this_max)
+                        else:
+                            is_closest = (dist_to_this_max < best_dist)
+
+                        this_assign[is_closest] = this_max_name
+                        best_dist[is_closest] = dist_to_this_max[is_closest]
+
+
+                    self.data[this_ind] = this_assign
 
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # CPROPS Assignment

@@ -716,7 +716,44 @@ class Cube(object):
     # Potentially set blank values (user or header) to invalid or clip
     # below some threshold (often useful).
 
+# &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
+# NUMPY HELPERS
+# &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
 
+# It's often useful to move between arrays of coordinates and tuples
+# (for indexing). I'm sure there's a better way to do this, but for
+# now these two helper functions will make things simpler.
+
+def xyzarr_to_tuple(
+    xyzarr=None,
+    coordaxis=0):
+    """
+    Convert a coordinate array to a tuple of arrays.
+    """
+    
+    if xyzarr == None:
+        return
+    
+    if coordaxis == 0:
+        return tuple(xyzarr[i,:] for i in range(xyzarr.shape[coordaxis]))
+    else:
+        return tuple(xyzarr[:,i] for i in range(xyzarr.shape[coordaxis]))
+
+def xyztup_to_array(
+    xyztup=None,
+    coordaxis=0):
+    """
+    Convert a coordinate tuple to an array.
+    """
+    
+    if xyztup == None:
+        return
+    
+    if coordaxis == 0:
+        return np.vstack(xyztup)
+    else:
+        return np.vstack(xyztup).transpose()
+    
 # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
 # EXTERNAL CASA FUNCTIONS
 # &%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%&%
