@@ -462,7 +462,7 @@ class Lmax():
             i += 1
         
         self.keep_lmax_subset(keep)
-
+    
     def reject_on_delta(
         self,
         thresh=3.0,
@@ -475,30 +475,26 @@ class Lmax():
         if self.merger_matrix == None:
             print "You need to calculate the merger matrix."
 
-        if snr:
-            data = self.linked_data.snr()
-        else:
-            data = self.linked_data.data
+        merge_copy = merger_matrix.copy()
+        low_value = np.min(self.merge_levels)-1
+        merge_copy[np.isfinite(merge_copy)==False] = \
+            low_value
 
+        # Initialize the flags to save
         keep = (self.num == self.num)
 
-        i = 0
-        for seed in self.num:
-            
-            
-            # TBD
+        # Take the max along the first axis (which axis shouldn't matter)
+        max_merger_level = np.argmax(self.merge_copy,axis=1)
+        max_merger_seed = np.argmax(self.merge_copy,axis=1)
+        delta = self.val - max_merger_level
 
-            #coords = (
-            #    self.pix[0][seed],
-            #    self.pix[1][seed],
-            #    self.pix[2][seed])
-                
-            # TBD
+        # Recast as a signal-to-noise (1d)
+        if snr == True:            
+            delta = delta / self.linked_data.noise.scale
 
-            #if data[coords] < thresh:
-            #    keep[i] = False
-            
-            i += 1
+        # Threshold against the required delta
+        keep = (delta > thresh)
 
+        # Return
         self.keep_lmax_subset(keep)
 
