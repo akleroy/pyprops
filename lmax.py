@@ -9,6 +9,7 @@ import time, copy, sys
 import numpy as np
 
 from scipy.ndimage import maximum_filter
+from scipy.ndimage import grey_dilation
 from scipy.ndimage import uniform_filter
 from scipy.ndimage import label, find_objects
 
@@ -39,6 +40,7 @@ class Lmax():
     val = None
 
     merger_matrix = None
+    merer_levels = None
     
     linked_data = None
     linked_mask = None
@@ -214,7 +216,9 @@ class Lmax():
         # ........................................................
         # Apply the filter
         # ........................................................
-        
+
+        # Is there any danger in floating point here?
+
         max_image = maximum_filter(
             data, 
             footprint=footprint,
@@ -222,12 +226,14 @@ class Lmax():
             cval=low_value)
         lmax_cube = (data == max_image)*(data != low_value)
 
+        # This next step ensures uniquness (i.e., that you are the
+        # *only* local maximum) at the expense of a second filter.
+
         max_count = uniform_filter(
             lmax_cube*uniform_total,
             size=uniform_size,
             mode="constant", cval=0.)
         lmax_cube *= (max_count == 1)
-
 
         # This works and is clean and arbitrary-shaped, but it's
         # incredibly slow:
@@ -251,7 +257,7 @@ class Lmax():
         # Record the maxima
         # ........................................................
 
-        self.indices = np.vstack(np.where(lmax)).transpose()
+        self.indices = np.vstack(np.where(lmax_cube)).transpose()
         self.recalc_from_ind()
 
         # ........................................................
@@ -265,6 +271,12 @@ class Lmax():
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
     # Calculations Involving Merger Levels
     # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+    # Note the conceptual issue here - we often want to clip on a
+    # signal-to-noise based merger level but also want the merger
+    # levels in real units. That's great, except that sometimes the
+    # cube may have variable noise and the result will no longer be
+    # identical.
 
     def calc_merger(
         self,
@@ -304,6 +316,8 @@ class Lmax():
 
         if levels == None:
             if self.linked_data.noise != None:
+                print "I will default to one sigma spacing to calculate mergers."
+                print "... you may want finer spacing depending on your needs."
                 levels = contour_values(
                     linspace = True,
                     maxval = max_use,
@@ -317,6 +331,9 @@ class Lmax():
                     minval = min_use,                
                     nlev = 100
                     )
+
+        # Save the levels used to construct the merger matrix
+        self.merger_levels = levels
 
         # Build the connectivity structure
 
@@ -464,8 +481,10 @@ class Lmax():
             data = self.linked_data.data
 
         keep = (self.num == self.num)
+
         i = 0
         for seed in self.num:
+            
             
             # TBD
 

@@ -17,6 +17,8 @@ mask - create, manipulate, and read/write masks. Inherits cube.
 
 noise - defines a class to derive noise estimates
 
+assign - a "colored" cube that assigns pixels to objects
+
 lmax - identifies local maxima
 
 struct - helper class to build morphological structuring elements
